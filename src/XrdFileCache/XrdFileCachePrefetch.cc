@@ -44,7 +44,8 @@ Prefetch::Prefetch(XrdOucCacheIO &inputIO, std::string& disk_file_path, long lon
    m_started(false),
    m_failed(false),
    m_stop(false),
-   m_stateCond(0)    // We will explicitly lock the condition before use.
+   m_stateCond(0),    // We will explicitly lock the condition before use.
+   m_quequeMutex(0)
 {
    clLog()->Debug(XrdCl::AppMsg, "Prefetch::Prefetch() %s", m_input.Path());
 }
@@ -330,11 +331,13 @@ void Prefetch::RecordDownloadInfo()
 void Prefetch::AddTaskForRng(long long offset, int size, XrdSysCondVar* cond)
 {
    clLog()->Debug(XrdCl::AppMsg, "Prefetch::AddTask %lld %d cond= %p %s", offset, size, (void*)cond, m_input.Path());
-   m_downloadStatusMutex.Lock();
    int first_block = offset / m_cfi.GetBufferSize();
    int last_block  = (offset + size -1)/ m_cfi.GetBufferSize();
+
+   m_quequeMutex.Lock();
    m_tasks_queue.push(Task(first_block, last_block, cond));
-   m_downloadStatusMutex.UnLock();
+   m_quequeMutex.Signal();
+   m_quequeMutex.UnLock();
 }
 //______________________________________________________________________________
 
@@ -343,35 +346,40 @@ void Prefetch::AddTaskForRng(long long offset, int size, XrdSysCondVar* cond)
 bool Prefetch::GetNextTask(Task& t )
 {
    bool res = false;
+
    m_quequeMutex.Lock();
+
    if (m_tasks_queue.empty())
    {
-      // give one block-atoms which has not been downloaded from beginning to end
-      m_downloadStatusMutex.Lock();
-      for (int i = 0; i < m_cfi.GetSizeInBits(); ++i)
+      if (m_quequeMutex.WaitMS(500))
       {
-         if (m_cfi.TestBit(i) == false)
+         m_quequeMutex.UnLock(); 
+         // give one block-atoms which has not been downloaded from beginning to end
+         m_downloadStatusMutex.Lock();
+         for (int i = 0; i < m_cfi.GetSizeInBits(); ++i)
          {
-            t.firstBlock = i;
-            t.lastBlock = t.firstBlock;
-            t.condVar = 0;
+            if (m_cfi.TestBit(i) == false)
+            {
+               t.firstBlock = i;
+               t.lastBlock = t.firstBlock;
+               t.condVar = 0;
 
-            clLog()->Debug(XrdCl::AppMsg, "Prefetch::GetNextTask() read first undread block %s", m_input.Path());
-            res = true;
-            break;
+               clLog()->Debug(XrdCl::AppMsg, "Prefetch::GetNextTask() read first undread block %s", m_input.Path());
+               res = true;
+               break;
+            }
          }
-      }
 
-      m_downloadStatusMutex.UnLock();
+         m_downloadStatusMutex.UnLock();
+         return true;
+      }
    }
-   else
-   {
-      clLog()->Debug(XrdCl::AppMsg, "Prefetch::GetNextTask() from queue %s", m_input.Path());
-      t = m_tasks_queue.front();
-      m_tasks_queue.pop();
-      res = true;
-   }
-   m_quequeMutex.UnLock();
+
+   clLog()->Debug(XrdCl::AppMsg, "Prefetch::GetNextTask() from queue %s", m_input.Path());
+   t = m_tasks_queue.front();
+   m_tasks_queue.pop();
+   m_quequeMutex.UnLock(); 
+   res = true;
 
    return res;
 }

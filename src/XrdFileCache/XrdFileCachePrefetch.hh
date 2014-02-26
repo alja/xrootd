@@ -127,7 +127,7 @@ namespace XrdFileCache
          XrdSysMutex      m_downloadStatusMutex; //!< mutex locking access to m_cfi object
 
          std::queue<Task> m_tasks_queue; //!< download queue
-         XrdSysMutex      m_quequeMutex;
+         XrdSysCondVar    m_quequeMutex;
 
          Stats            m_stats;      //!< cache statistics, used in IO detach
    };
