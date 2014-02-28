@@ -18,14 +18,17 @@
 // along with XRootD.  If not, see <http://www.gnu.org/licenses/>.
 //----------------------------------------------------------------------------------
 #include <string>
+#include <queue>
 
 #include "XrdSys/XrdSysPthread.hh"
 #include "XrdOuc/XrdOucCache.hh"
 #include "XrdCl/XrdClDefaultEnv.hh"
 
-namespace XrdCl
-{
+namespace XrdCl {
    class Log;
+}
+namespace XrdFileCache {
+class Prefetch;
 }
 
 namespace XrdFileCache
@@ -61,6 +64,20 @@ namespace XrdFileCache
          virtual XrdOucCache* Create(XrdOucCache::Parms&, XrdOucCacheIO::aprParms*)
          { return NULL; }
 
+         // for disk performance allow only one 1M(default) read at the time
+      static void AddWriteTask(Prefetch* p, int ramBlockidx, int fileBlockIdx, size_t size);
+
+        static  bool HaveFreeWritingSlots();
+         void ProcessWriteTasks();
+         struct WriteTask {
+            Prefetch* prefetch;
+            int ramBlockIdx;
+            int fileBlockIdx;
+            size_t size;
+            WriteTask(Prefetch* p, int ri, int fi, size_t s):prefetch(p), ramBlockIdx(ri), fileBlockIdx(fi), size(s){}
+         };
+         static XrdSysCondVar         m_writeMutex;
+         static std::queue<WriteTask> m_writeQueue;
       private:
          void Detach(XrdOucCacheIO *);
          bool getFilePathFromURL(const char* url, std::string& res) const;
@@ -68,6 +85,9 @@ namespace XrdFileCache
          XrdSysMutex        m_io_mutex; //!< central lock for this class
          unsigned int       m_attached; //!< number of attached IO objects
          XrdOucCacheStats  &m_stats;    //!< global cache usage statistics
+
+      
+         
    };
 
 
@@ -76,6 +96,8 @@ namespace XrdFileCache
    //----------------------------------------------------------------------------
    class IO : public XrdOucCacheIO
    {
+      friend class Prefetch;
+
       public:
          IO (XrdOucCacheIO &io, XrdOucCacheStats &stats, Cache &cache) :
          m_io(io), m_statsGlobal(stats), m_cache(cache) {}
@@ -102,8 +124,6 @@ namespace XrdFileCache
          XrdOucCacheIO    &m_io;          //!< original data source
          XrdOucCacheStats &m_statsGlobal; //!< reference to Cache statistics
          Cache            &m_cache;       //!< reference to Cache needed in detach
-
-
    };
 }
 

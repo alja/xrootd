@@ -26,6 +26,7 @@
 #include "XrdOuc/XrdOucEnv.hh"
 
 #include "XrdFileCache.hh"
+#include "XrdFileCachePrefetch.hh"
 #include "XrdFileCacheIOEntireFile.hh"
 #include "XrdFileCacheIOFileBlock.hh"
 #include "XrdFileCacheFactory.hh"
@@ -33,11 +34,24 @@
 
 
 using namespace XrdFileCache;
+XrdSysCondVar         m_writeMutex(0);
+std::queue<Cache::WriteTask> m_writeQueue;
+
+void *ProcessWriteTaskThread(void* c)
+{
+   Cache *cache = static_cast<Cache*>(c);
+   cache->ProcessWriteTasks();
+   return NULL;
+}
 
 Cache::Cache(XrdOucCacheStats & stats)
    : m_attached(0),
      m_stats(stats)
-{}
+     //   m_writeMutex(0)
+{
+   pthread_t tid;
+   XrdSysThread::Run(&tid, ProcessWriteTaskThread, (void*)this, 0, "XrdFileCache WriteTasks ");
+}
 
 XrdOucCacheIO *Cache::Attach(XrdOucCacheIO *io, int Options)
 {
@@ -104,4 +118,40 @@ bool Cache::getFilePathFromURL(const char* url, std::string &result) const
    result += path.substr(split_loc+1,kloc-split_loc-1);
 
    return true;
+}
+
+//______________________________________________________________________________
+bool
+Cache::HaveFreeWritingSlots() 
+{
+   const static size_t maxWriteWaits=10000;
+   return m_writeQueue.size() < maxWriteWaits;
+}
+
+
+//______________________________________________________________________________
+void
+Cache::AddWriteTask(Prefetch* p, int ri, int fi, size_t s)
+{
+   XrdSysCondVarHelper xx(m_writeMutex);
+   m_writeQueue.push(WriteTask(p, ri, fi, s));
+   m_writeMutex.Signal();
+}
+
+//______________________________________________________________________________
+void  
+Cache::ProcessWriteTasks()
+{
+   while (true)
+   {
+      m_writeMutex.Lock();
+      if (m_writeQueue.empty())
+      {
+         m_writeMutex.Wait();
+      }
+      WriteTask t = m_writeQueue.front();
+      m_writeQueue.pop();
+      m_writeMutex.UnLock();
+      t.prefetch->WriteBlockToDisk(t.ramBlockIdx, t.fileBlockIdx, t.size);
+   }
 }
