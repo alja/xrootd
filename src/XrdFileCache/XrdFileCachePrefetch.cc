@@ -290,7 +290,7 @@ Prefetch::DoTask(Task& task)
       int retval = m_input.Read(buff, offset + m_offset, missing);
       if (retval < 0)
       {
-         clLog()->Warning(XrdCl::AppMsg, "Prefetch::Run() Failed for negative ret %d block %d %s", retval, task.fileBlockIdx , m_input.Path());
+         clLog()->Warning(XrdCl::AppMsg, "Prefetch::DoTask() Failed for negative ret %d block %d %s", retval, task.fileBlockIdx , m_input.Path());
          XrdSysCondVarHelper monitor(m_stateCond);
          m_failed = true;
          retval = -EINTR;
@@ -303,7 +303,7 @@ Prefetch::DoTask(Task& task)
       cnt++;
       if (cnt > PREFETCH_MAX_ATTEMPTS)
       {
-         clLog()->Error(XrdCl::AppMsg, "Prefetch::Run() too many attempts\n %s", m_input.Path());
+         clLog()->Error(XrdCl::AppMsg, "Prefetch::DoTask() too many attempts\n %s", m_input.Path());
          m_failed = true;
          retval = -EINTR;
          break;
@@ -311,7 +311,7 @@ Prefetch::DoTask(Task& task)
 
       if (missing)
       {
-         clLog()->Warning(XrdCl::AppMsg, "Prefetch::Run() reattempt writing missing %d for block %d %s", missing, task.fileBlockIdx, m_input.Path());
+         clLog()->Warning(XrdCl::AppMsg, "Prefetch::DoTask() reattempt writing missing %d for block %d %s", missing, task.fileBlockIdx, m_input.Path());
       }
    }
 
@@ -332,7 +332,8 @@ Prefetch::WriteBlockToDisk(int ramIdx, int fileIdx, size_t size)
 {
    // called from XrdFileCache::Cache when process queue
 
-   char* buff = m_ram.m_buffer + ramIdx*m_cfi.GetBufferSize();
+   char* buff = m_ram.m_buffer;
+   buff += ramIdx*m_cfi.GetBufferSize();
    int retval = 0;
    // write block buffer into disk file
    {
@@ -347,7 +348,7 @@ Prefetch::WriteBlockToDisk(int ramIdx, int fileIdx, size_t size)
          buffer_offset += retval;
          if (buffer_remaining)
          {
-            clLog()->Warning(XrdCl::AppMsg, "Prefetch::Run() reattempt writing missing %d for block %d %s", buffer_remaining, fileIdx, m_input.Path());
+            clLog()->Warning(XrdCl::AppMsg, "Prefetch::WriteToBlock() reattempt writing missing %d for block %d %s", buffer_remaining, fileIdx, m_input.Path());
          }
       }
    }
@@ -359,7 +360,7 @@ Prefetch::WriteBlockToDisk(int ramIdx, int fileIdx, size_t size)
 
 
    // set downloaded bits
-   clLog()->Dump(XrdCl::AppMsg, "Prefetch::Run() set bit for block [%d] %s", fileIdx, m_input.Path());
+   clLog()->Dump(XrdCl::AppMsg, "Prefetch::WriteToBlock() set bit for block [%d] %s", fileIdx, m_input.Path());
    m_downloadStatusMutex.Lock();
    m_cfi.SetBit(fileIdx);
    m_downloadStatusMutex.UnLock();
