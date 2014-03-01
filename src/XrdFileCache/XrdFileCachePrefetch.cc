@@ -283,7 +283,8 @@ Prefetch::DoTask(Task& task)
    long long offset = task.fileBlockIdx * m_cfi.GetBufferSize();
    int missing =  task.size;
    int cnt = 0;
-   char* buff = m_ram.m_buffer + offset;
+   char* buff = m_ram.m_buffer;
+   buff += task.ramBlockIdx * m_cfi.GetBufferSize();
    while (missing)
    {
       int retval = m_input.Read(buff, offset + m_offset, missing);
@@ -368,19 +369,6 @@ Prefetch::WriteBlockToDisk(int ramIdx, int fileIdx, size_t size)
 
 bool Prefetch::ReadBlockFromTask(int blockIdx, char* buff, long long off, size_t size)
 {
-
- {
-      XrdSysCondVarHelper monitor(m_stateCond);
-
-      if (m_failed) return false;
-      
-      if ( ! m_started)
-      {
-         m_stateCond.Wait();
-         if (m_failed) return false;
-      }
-   }
-
    if (Cache::HaveFreeWritingSlots())
    {
       int ramIdx = -1;
@@ -417,6 +405,19 @@ bool Prefetch::ReadBlockFromTask(int blockIdx, char* buff, long long off, size_t
 
 ssize_t Prefetch::ReadInBlocks(char *buff, off_t off, size_t size)
 {
+
+ {
+      XrdSysCondVarHelper monitor(m_stateCond);
+
+      if (m_failed) return false;
+      
+      if ( ! m_started)
+      {
+         m_stateCond.Wait();
+         if (m_failed) return false;
+      }
+   }
+
    long long off0 = off;
    int idx_first = off0 / m_cfi.GetBufferSize();
    int idx_last  = (off0 + size -1)/ m_cfi.GetBufferSize();
