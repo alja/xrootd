@@ -206,6 +206,14 @@ Prefetch::Run()
       if (already)
       {
          clLog()->Debug(XrdCl::AppMsg, "Prefetch::Run() block [%d] already done, continue ... %s",task.fileBlockIdx , m_input.Path());
+         
+         if (task.condVar)
+         {
+            clLog()->Warning(XrdCl::AppMsg, "Prefetch::Run() singals alreadu downloaded");
+            XrdSysCondVarHelper(*task.condVar);
+
+            task.condVar->Signal();
+            }
          continue;
       } else {
          clLog()->Dump(XrdCl::AppMsg, "Prefetch::Run() download block [%d] %s", task.fileBlockIdx, m_input.Path());
@@ -400,6 +408,8 @@ Prefetch::WriteBlockToDisk(int ramIdx, int fileIdx, size_t size)
 
 bool Prefetch::ReadFromTask(int blockIdx, char* buff, long long off, size_t size)
 {
+   // offs == offset inside the block, size  read size in block
+   clLog()->Dump(XrdCl::AppMsg, "Prefetch::ReadFromTask fileIdx= %d begin", blockIdx); 
    if (Cache::HaveFreeWritingSlots())
    {
       int ramIdx = -1;
@@ -411,19 +421,23 @@ bool Prefetch::ReadFromTask(int blockIdx, char* buff, long long off, size_t size
       }
       m_ram.m_writeMutex.UnLock();
 
-      if (ramIdx >= 0) {
+      if (ramIdx >= 0) 
+      {
          // create task. check if this is the end block
          size_t taskSize = m_cfi.GetBufferSize();
-            if (blockIdx == (m_cfi.GetSizeInBits() -1))
-              taskSize = m_input.FSize() - blockIdx*m_cfi.GetBufferSize();
+         if (blockIdx == (m_cfi.GetSizeInBits() -1))
+            taskSize = m_input.FSize() - blockIdx*m_cfi.GetBufferSize();
 
+
+         clLog()->Dump(XrdCl::AppMsg, "Prefetch::ReadFromTask, going to add task fileIdx=%d ", blockIdx); 
          XrdSysCondVar newTaskCond(0);
          m_tasks_queue.push(Task(blockIdx, ramIdx, taskSize, &newTaskCond));
          XrdSysCondVarHelper xx(newTaskCond);
-
+         clLog()->Dump(XrdCl::AppMsg, "Prefetch::ReadFromTask, task is added , waiting for singnal fileIdx=%d ", blockIdx); 
          newTaskCond.Wait();
+         clLog()->Dump(XrdCl::AppMsg, "Prefetch::ReadFromTask write from RAM to IO::buffer fileIdx=%d ", blockIdx);
          long long inBlockOff = off - blockIdx * m_cfi.GetBufferSize();
-         char* srcBuff =  m_ram.m_buffer  + ramIdx*m_cfi.GetBufferSize();
+         char* srcBuff =  m_ram.m_buffer  + ramIdx*m_cfi.GetBufferSize(); 
          memcpy(buff, srcBuff - inBlockOff, size);
          return true;
       }
