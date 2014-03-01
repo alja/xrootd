@@ -33,10 +33,11 @@
 #include "XrdFileCachePrefetch.hh"
 
 
-using namespace XrdFileCache;
-XrdSysCondVar         m_writeMutex(0);
-std::queue<Cache::WriteTask> m_writeQueue;
+XrdSysCondVar XrdFileCache::Cache::m_writeMutex(0);
+std::queue<XrdFileCache::Cache::WriteTask> XrdFileCache::Cache::m_writeQueue;
 
+
+using namespace XrdFileCache;
 void *ProcessWriteTaskThread(void* c)
 {
    Cache *cache = static_cast<Cache*>(c);
@@ -61,8 +62,7 @@ XrdOucCacheIO *Cache::Attach(XrdOucCacheIO *io, int Options)
 
       m_attached++;
 
-      XrdCl::Log* clLog = XrdCl::DefaultEnv::GetLog();
-      clLog->Info(XrdCl::AppMsg, "Cache::Attach() %s", io->Path());
+      clLog()->Info(XrdCl::AppMsg, "Cache::Attach() %s", io->Path());
 
       if (io)
       {
@@ -73,7 +73,7 @@ XrdOucCacheIO *Cache::Attach(XrdOucCacheIO *io, int Options)
       }
       else
       {
-         clLog->Debug(XrdCl::AppMsg, "Cache::Attache(), XrdOucCacheIO == NULL %s", io->Path());
+         clLog()->Debug(XrdCl::AppMsg, "Cache::Attache(), XrdOucCacheIO == NULL %s", io->Path());
       }
 
       m_attached--;
@@ -89,13 +89,12 @@ int Cache::isAttached()
 
 void Cache::Detach(XrdOucCacheIO* io)
 {
-   XrdCl::Log* clLog = XrdCl::DefaultEnv::GetLog();
-   clLog->Info(XrdCl::AppMsg, "Cache::Detach() %s", io->Path());
+   clLog()->Info(XrdCl::AppMsg, "Cache::Detach() %s", io->Path());
 
    XrdSysMutexHelper lock(&m_io_mutex);
    m_attached--;
 
-   clLog->Debug(XrdCl::AppMsg, "Cache::Detach(), deleting IO object. Attach count = %d %s", m_attached, io->Path());
+   clLog()->Debug(XrdCl::AppMsg, "Cache::Detach(), deleting IO object. Attach count = %d %s", m_attached, io->Path());
 
    delete io;
 }
@@ -133,6 +132,7 @@ Cache::HaveFreeWritingSlots()
 void
 Cache::AddWriteTask(Prefetch* p, int ri, int fi, size_t s)
 {
+   XrdCl::DefaultEnv::GetLog()->Debug(XrdCl::AppMsg, "Cache::AddWriteTask()");
    XrdSysCondVarHelper xx(m_writeMutex);
    m_writeQueue.push(WriteTask(p, ri, fi, s));
    m_writeMutex.Signal();

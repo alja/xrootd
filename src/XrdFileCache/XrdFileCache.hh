@@ -82,6 +82,8 @@ namespace XrdFileCache
          void Detach(XrdOucCacheIO *);
          bool getFilePathFromURL(const char* url, std::string& res) const;
 
+         XrdCl::Log* clLog() const { return XrdCl::DefaultEnv::GetLog(); }
+
          XrdSysMutex        m_io_mutex; //!< central lock for this class
          unsigned int       m_attached; //!< number of attached IO objects
          XrdOucCacheStats  &m_stats;    //!< global cache usage statistics
