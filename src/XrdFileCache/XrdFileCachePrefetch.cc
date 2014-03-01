@@ -179,12 +179,12 @@ Prefetch::Run()
       {
          return;
       }
-      m_started = true;
 
       if ( !Open())
       {
          m_failed = true;
       }
+      m_started = true;
       // Broadcast to possible io-read waiting objects
       m_stateCond.Broadcast();
 
@@ -368,6 +368,19 @@ Prefetch::WriteBlockToDisk(int ramIdx, int fileIdx, size_t size)
 
 bool Prefetch::ReadBlockFromTask(int blockIdx, char* buff, long long off, size_t size)
 {
+
+ {
+      XrdSysCondVarHelper monitor(m_stateCond);
+
+      if (m_failed) return false;
+      
+      if ( ! m_started)
+      {
+         m_stateCond.Wait();
+         if (m_failed) return false;
+      }
+   }
+
    if (Cache::HaveFreeWritingSlots())
    {
       int ramIdx = -1;
