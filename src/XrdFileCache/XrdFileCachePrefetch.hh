@@ -116,7 +116,7 @@ namespace XrdFileCache
          XrdCl::Log* clLog() const { return XrdCl::DefaultEnv::GetLog(); }
 
          ssize_t ReadInBlocks( char* buff, off_t offset, size_t size);
-         bool    ReadBlockFromTask(int bIdx, char* buff, long long off, size_t size);
+         bool    ReadFromTask(int bIdx, char* buff, long long off, size_t size);
          void    DoTask(Task& task);
 
          RAM             m_ram;            //!< in memory cache

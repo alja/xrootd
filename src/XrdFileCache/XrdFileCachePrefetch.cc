@@ -247,6 +247,7 @@ Prefetch::GetNextTask(Task& t)
          m_downloadStatusMutex.Lock();
 
          t.fileBlockIdx = -1;
+         t.ramBlockIdx = -1;
          for (int i = 0; i < m_cfi.GetSizeInBits(); ++i)
          {
             if (m_cfi.TestBit(i) == false)
@@ -257,9 +258,9 @@ Prefetch::GetNextTask(Task& t)
             }
          }
          m_downloadStatusMutex.UnLock();
-         clLog()->Dump(XrdCl::AppMsg, "Prefetch::GetNextTask() read first undread block %d", t.fileBlockIdx );
+
          if (t.fileBlockIdx >= 0 ) {
-            t.ramBlockIdx = -1;
+            clLog()->Dump(XrdCl::AppMsg, "Prefetch::GetNextTask() read first undread block %d", t.fileBlockIdx );
             if (Cache::HaveFreeWritingSlots())
             {
                m_ram.m_writeMutex.Lock();
@@ -268,13 +269,15 @@ Prefetch::GetNextTask(Task& t)
                      t.ramBlockIdx = i; break;
                   }
                }
+
                m_ram.m_writeMutex.UnLock();
             }
-
          }
 
-         if (t.ramBlockIdx >= 0 ) {
-           
+         if (t.ramBlockIdx >= 0 ) 
+         {
+            if (t.fileBlockIdx == (m_cfi.GetSizeInBits() -1))
+               t.size =  m_input.FSize() - t.fileBlockIdx*m_cfi.GetBufferSize(); 
             return true;
          }
       }
@@ -353,22 +356,31 @@ Prefetch::WriteBlockToDisk(int ramIdx, int fileIdx, size_t size)
    char* buff = m_ram.m_buffer;
    buff += ramIdx*m_cfi.GetBufferSize();
    int retval = 0;
+
+
    // write block buffer into disk file
    {
       long long offset = fileIdx * m_cfi.GetBufferSize();
       int buffer_remaining = size;
       int buffer_offset = 0;
+
+      int cnt = 0;
       while ((buffer_remaining > 0) && // There is more to be written
              (((retval = m_output->Write(buff, offset + buffer_offset, buffer_remaining)) != -1)
               || (errno == EINTR))) // Write occurs without an error
       {
          buffer_remaining -= retval;
          buff += retval;
+         cnt++;
          if (buffer_remaining)
          {
-            clLog()->Warning(XrdCl::AppMsg, "Prefetch::WriteToBlock() reattempt writing missing %d for block %d %s", buffer_remaining, fileIdx, m_input.Path());
+            clLog()->Warning(XrdCl::AppMsg, "Prefetch::WriteToBlock() reattempt[%d] writing missing %d for block %d %s", cnt,  buffer_remaining, fileIdx, m_input.Path());
          }
+
       }
+
+
+      
    }
 
    // mark ram block available
@@ -378,7 +390,7 @@ Prefetch::WriteBlockToDisk(int ramIdx, int fileIdx, size_t size)
 
 
    // set downloaded bits
-   clLog()->Dump(XrdCl::AppMsg, "Prefetch::WriteToBlock() set bit for block [%d] %s", fileIdx, m_input.Path());
+   clLog()->Dump(XrdCl::AppMsg, "Prefetch::WriteToBlock() success set bit for block [%d] %s", fileIdx, m_input.Path());
    m_downloadStatusMutex.Lock();
    m_cfi.SetBit(fileIdx);
    m_downloadStatusMutex.UnLock();
@@ -386,7 +398,7 @@ Prefetch::WriteBlockToDisk(int ramIdx, int fileIdx, size_t size)
 
 //______________________________________________________________________________
 
-bool Prefetch::ReadBlockFromTask(int blockIdx, char* buff, long long off, size_t size)
+bool Prefetch::ReadFromTask(int blockIdx, char* buff, long long off, size_t size)
 {
    if (Cache::HaveFreeWritingSlots())
    {
@@ -402,9 +414,9 @@ bool Prefetch::ReadBlockFromTask(int blockIdx, char* buff, long long off, size_t
       if (ramIdx >= 0) {
          // create task. check if this is the end block
          size_t taskSize = m_cfi.GetBufferSize();
-         int lastFileBlock = (m_input.FSize()-1)/m_cfi.GetBufferSize();
-         if (blockIdx == lastFileBlock)
+            if (blockIdx == (m_cfi.GetSizeInBits() -1))
               taskSize = m_input.FSize() - blockIdx*m_cfi.GetBufferSize();
+
          XrdSysCondVar newTaskCond(0);
          m_tasks_queue.push(Task(blockIdx, ramIdx, taskSize, &newTaskCond));
          XrdSysCondVarHelper xx(newTaskCond);
@@ -472,7 +484,7 @@ ssize_t Prefetch::ReadInBlocks(char *buff, off_t off, size_t size)
       else 
       {
          Task task;
-         if (ReadBlockFromTask(blockIdx, buff, off, size))
+         if (ReadFromTask(blockIdx, buff, off, size))
          {
             retvalBlock = size;
          }
