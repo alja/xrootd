@@ -487,20 +487,20 @@ ssize_t Prefetch::ReadInBlocks(char *buff, off_t off, size_t size)
       // now do per block read at Read(buff, off, readBlockSize)
       if (m_cfi.TestBit(blockIdx))
       {
-         retvalBlock = m_output->Read(buff, off, size);
+         retvalBlock = m_output->Read(buff, off, readBlockSize);
          m_stats.m_BytesDisk += retvalBlock;
       }
       else 
       {
          Task task;
-         if (ReadFromTask(blockIdx, buff, off, size))
+         if (ReadFromTask(blockIdx, buff, off, readBlockSize))
          {
             retvalBlock = size;
             m_stats.m_BytesRam += retvalBlock;
          }
          else
          {
-            retvalBlock = m_input.Read(buff, off, size);
+            retvalBlock = m_input.Read(buff, off, readBlockSize);
             m_stats.m_BytesMissed += retvalBlock;
          }
       }
@@ -511,8 +511,10 @@ ssize_t Prefetch::ReadInBlocks(char *buff, off_t off, size_t size)
          buff += retvalBlock;
          off += retvalBlock;
 
-         if ( readBlockSize != retvalBlock)
+         if ( readBlockSize != retvalBlock) {
+            clLog()->Debug(XrdCl::AppMsg, "Prefetch::ReadFromTask incomplete , missing = %d", readBlockSize-retvalBlock);
             return bytes_read;
+         }
 
       }
       else
