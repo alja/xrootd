@@ -152,10 +152,9 @@ namespace XrdFileCache
          struct AStat
          {
             time_t    DetachTime;
-            long long BytesRead;
-            int       HitsCached;
-            int       HitsRemote;
-            int       HitsPartial[12];
+            long long BytesDisk;
+            long long BytesRam;
+            long long BytesMissed;
          };
 
          int            m_version;    //!< info version

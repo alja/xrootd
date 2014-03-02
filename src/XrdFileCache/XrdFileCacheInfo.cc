@@ -134,13 +134,10 @@ void Info::AppendIOStat(const Stats* caches, XrdOssDF* fp)
    off += fp->Write(&m_accessCnt, off, sizeof(int));
    off += (m_accessCnt-1)*sizeof(AStat);
    AStat as;
-   as.DetachTime = time(0);
-   as.BytesRead = caches->m_BytesCached + caches->m_BytesRemote;
-   as.HitsCached = caches->m_HitsCached;
-   as.HitsRemote = caches->m_HitsRemote;
-   for (int i = 0; i < 12; ++i) {
-      as.HitsPartial[i] = caches->m_HitsPartial[i];
-   }
+   as.DetachTime  = time(0);
+   as.BytesDisk   = caches->m_BytesDisk;
+   as.BytesRam    = caches->m_BytesRam;
+   as.BytesMissed = caches->m_BytesMissed;
 
    int flu = flock(fp->getFD(),  LOCK_UN);
    if (flu) clLog()->Error(XrdCl::AppMsg, "AppendStat() un-lock failed \n");
