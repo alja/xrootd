@@ -360,7 +360,7 @@ void
 Prefetch::WriteBlockToDisk(int ramIdx, int fileIdx, size_t size)
 {
    // called from XrdFileCache::Cache when process queue
-
+    
    char* buff = m_ram.m_buffer;
    buff += ramIdx*m_cfi.GetBufferSize();
    int retval = 0;

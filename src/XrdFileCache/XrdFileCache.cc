@@ -34,7 +34,7 @@
 
 
 XrdSysCondVar XrdFileCache::Cache::m_writeMutex(0);
-std::queue<XrdFileCache::Cache::WriteTask> XrdFileCache::Cache::m_writeQueue;
+std::list<XrdFileCache::Cache::WriteTask> XrdFileCache::Cache::m_writeQueue;
 
 
 using namespace XrdFileCache;
@@ -134,8 +134,24 @@ Cache::AddWriteTask(Prefetch* p, int ri, int fi, size_t s)
 {
    XrdCl::DefaultEnv::GetLog()->Debug(XrdCl::AppMsg, "Cache::AddWriteTask() bi=%d,  fi=%d, size= %d", ri, fi, (int) s);
    XrdSysCondVarHelper xx(m_writeMutex);
-   m_writeQueue.push(WriteTask(p, ri, fi, s));
+   m_writeQueue.push_back(WriteTask(p, ri, fi, s));
    m_writeMutex.Signal();
+}
+
+
+//______________________________________________________________________________
+void
+Cache::InvalidatePrefetchFromWriteTasks(Prefetch* p)
+{
+
+   for (std::list<Cache::WriteTask>::iterator i = m_writeQueue.begin(); i!= m_writeQueue.end(); ++i)
+   {
+      if ( i->prefetch == p) {
+         m_writeMutex.Lock();
+         i->prefetch = 0;
+         m_writeMutex.UnLock();
+      }
+   }
 }
 
 //______________________________________________________________________________
@@ -150,8 +166,9 @@ Cache::ProcessWriteTasks()
          m_writeMutex.Wait();
       }
       WriteTask t = m_writeQueue.front();
-      m_writeQueue.pop();
+      m_writeQueue.pop_front();  
+      if (t.prefetch) 
+         t.prefetch->WriteBlockToDisk(t.ramBlockIdx, t.fileBlockIdx, t.size); // AMT check in lock all the time is really necessary
       m_writeMutex.UnLock();
-      t.prefetch->WriteBlockToDisk(t.ramBlockIdx, t.fileBlockIdx, t.size);
    }
 }

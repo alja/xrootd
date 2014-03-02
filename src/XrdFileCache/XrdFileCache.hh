@@ -18,7 +18,7 @@
 // along with XRootD.  If not, see <http://www.gnu.org/licenses/>.
 //----------------------------------------------------------------------------------
 #include <string>
-#include <queue>
+#include <list>
 
 #include "XrdSys/XrdSysPthread.hh"
 #include "XrdOuc/XrdOucCache.hh"
@@ -68,6 +68,7 @@ namespace XrdFileCache
       static void AddWriteTask(Prefetch* p, int ramBlockidx, int fileBlockIdx, size_t size);
 
         static  bool HaveFreeWritingSlots();
+        static void InvalidatePrefetchFromWriteTasks(Prefetch* p);
          void ProcessWriteTasks();
          struct WriteTask {
             Prefetch* prefetch;
@@ -77,7 +78,7 @@ namespace XrdFileCache
             WriteTask(Prefetch* p, int ri, int fi, size_t s):prefetch(p), ramBlockIdx(ri), fileBlockIdx(fi), size(s){}
          };
          static XrdSysCondVar         m_writeMutex;
-         static std::queue<WriteTask> m_writeQueue;
+         static std::list<WriteTask> m_writeQueue;
       private:
          void Detach(XrdOucCacheIO *);
          bool getFilePathFromURL(const char* url, std::string& res) const;

@@ -59,6 +59,9 @@ IOEntireFile::~IOEntireFile()
 
 XrdOucCacheIO *IOEntireFile::Detach()
 {
+   clLog()->Debug(XrdCl::AppMsg, "IO::Detach %s",  m_io.Path());
+   Cache::InvalidatePrefetchFromWriteTasks(m_prefetch);
+
    m_statsGlobal.Add(m_prefetch->GetStats());
 
    XrdOucCacheIO * io = &m_io;
