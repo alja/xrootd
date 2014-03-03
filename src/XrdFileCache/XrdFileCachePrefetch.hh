@@ -93,7 +93,7 @@ namespace XrdFileCache
          {
             int         m_numBlocks;
             char*       m_buffer;
-            bool*        m_blockStates;// 1= 0ccuped, 0 = free states
+            bool*       m_blockStates;// 1= 0ccuped, 0 = free states
             XrdSysMutex m_writeMutex;
 
             RAM();
@@ -138,7 +138,7 @@ namespace XrdFileCache
          XrdSysMutex      m_downloadStatusMutex; //!< mutex locking access to m_cfi object
 
          std::queue<Task> m_tasks_queue; //!< download queue
-         XrdSysCondVar    m_quequeMutex;
+         XrdSysCondVar    m_queueMutex;
 
          Stats            m_stats;      //!< cache statistics, used in IO detach
    };
