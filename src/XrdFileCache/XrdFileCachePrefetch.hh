@@ -82,11 +82,11 @@ namespace XrdFileCache
             int            ramBlockIdx;         //!< idx in the in-memory buffer
             size_t         size;         // cached, fo case this is end file block
             XrdSysCondVar *condVar;      //!< signal when complete
-            bool ok;
+            bool* ok;
 
-            Task(): fileBlockIdx(-1), ramBlockIdx(-1), size(0), condVar(0), ok(true) {}
-            Task(int b, int r, size_t s, XrdSysCondVar *cv):
-               fileBlockIdx(b), ramBlockIdx(r), size(s), condVar(cv), ok(true) {}
+            Task(): fileBlockIdx(-1), ramBlockIdx(-1), size(0), condVar(0), ok(0) { }
+            Task(int b, int r, size_t s, XrdSysCondVar *cv, bool* rs):
+               fileBlockIdx(b), ramBlockIdx(r), size(s), condVar(cv), ok(rs) {}
            ~Task() {}
          };
 
