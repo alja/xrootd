@@ -68,7 +68,7 @@ namespace XrdFileCache
       static void AddWriteTask(Prefetch* p, int ramBlockidx, int fileBlockIdx, size_t size);
 
         static  bool HaveFreeWritingSlots();
-        static void InvalidatePrefetchFromWriteTasks(Prefetch* p);
+
          void ProcessWriteTasks();
          struct WriteTask {
             Prefetch* prefetch;

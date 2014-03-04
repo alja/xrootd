@@ -25,6 +25,7 @@
 #include "XrdOss/XrdOss.hh"
 #include "XrdCl/XrdClFile.hh"
 #include "XrdSys/XrdSysPthread.hh"
+#include "XrdSys/XrdSysTimer.hh"
 #include "XrdOuc/XrdOucEnv.hh"
 
 
@@ -36,9 +37,8 @@ using namespace XrdFileCache;
 
 Prefetch::RAM::RAM(): m_numBlocks(0),m_buffer(0),  m_blockStates(0)
 {
-   // AMT this is temp, should be parsed in configuration
-   m_numBlocks = 32;
-   m_buffer = (char*)malloc(m_numBlocks * 1024* 1024);
+   m_numBlocks = Factory::GetInstance().RefConfiguration().m_NRamBuffers;
+   m_buffer = (char*)malloc(m_numBlocks * Factory::GetInstance().RefConfiguration().m_bufferSize);
    m_blockStates = new bool[m_numBlocks];
 
    for (int i=0; i < m_numBlocks; ++i) m_blockStates[i] = 0;
@@ -59,7 +59,8 @@ Prefetch::Prefetch(XrdOucCacheIO &inputIO, std::string& disk_file_path, long lon
    m_fileSize(iFileSize),
    m_started(false),
    m_failed(false),
-   m_stop(false),
+   m_stopping(false),
+   m_stopped(false),
    m_stateCond(0),    // We will explicitly lock the condition before use.
    m_queueMutex(0)
 {
@@ -74,24 +75,31 @@ Prefetch::~Prefetch()
 
    if (m_started == false) return;
 
-   bool fileComplete;
-   m_downloadStatusMutex.Lock();
-   fileComplete = m_cfi.IsComplete();
-   m_downloadStatusMutex.UnLock();
+   m_stopping = true;
 
-
-   if (fileComplete == false)
+   while (true)
    {
-      clLog()->Info(XrdCl::AppMsg, "Prefetch::~Prefetch() file not complete... %s", m_input.Path());
-      fflush(stdout);
-      XrdSysCondVarHelper monitor(m_stateCond);
-      if (m_stop == false)
+      if (m_failed) break;
+
+      if (m_stopped && m_tasks_queue.empty())
       {
-         m_stop = true;
-         clLog()->Info(XrdCl::AppMsg, "Prefetch::~Prefetch() waiting to stop Run() thread ... %s", m_input.Path());
-         m_stateCond.Wait();
+         clLog()->Debug(XrdCl::AppMsg, "Prefetch::~Prefetch sleep, waiting queues to empty begin %s", m_input.Path());
+         bool writewait = false;
+         for (int i = 0; i < m_ram.m_numBlocks;++i ) {
+            if (m_ram.m_blockStates[i]) {
+               writewait = true;
+               break;
+            }
+         }
+
+         clLog()->Debug(XrdCl::AppMsg, "Prefetch::~Prefetch sleep, writew  = %d  %s", writewait, m_input.Path());
+         if (writewait == false) 
+            break;
       }
+      XrdSysTimer::Wait(100);
    }
+
+   
 
    // write statistics in *cinfo file
    AppendIOStatToFileInfo();
@@ -230,12 +238,9 @@ Prefetch::Run()
       if (numReadBlocks % 10)
          RecordDownloadInfo();
 
-      // after completing a task, check if IO wants to break
-      if (m_stop)
-      {
-         clLog()->Debug(XrdCl::AppMsg, "stopping for a clean cause %s", m_input.Path());
-         m_stateCond.Signal();
-         return;
+      if (m_stopping) {        
+        clLog()->Dump(XrdCl::AppMsg, "Prefetch::Run() stopping for a clean cause");
+	break;
       }
 
    }  // loop tasks
@@ -246,8 +251,9 @@ Prefetch::Run()
 
    clLog()->Debug(XrdCl::AppMsg, "Prefetch::Run() exits, download %s  !", m_cfi.IsComplete() ? " completed " : "unfinished %s", m_input.Path());
 
-
    RecordDownloadInfo();
+
+   m_stopped = true;
 } // end Run()
 
 
@@ -261,6 +267,8 @@ Prefetch::GetNextTask(Task& t)
 
    while (m_tasks_queue.empty())
    {
+      if (m_stopping) return false;
+
       if (m_queueMutex.WaitMS(500))
       {
          m_queueMutex.UnLock(); 
@@ -573,7 +581,6 @@ Prefetch::Read(char *buff, off_t off, size_t size)
    fileComplete = m_cfi.IsComplete();
    m_downloadStatusMutex.UnLock();
 
-   // AMT
 
    if (fileComplete)
    {  
@@ -583,7 +590,10 @@ Prefetch::Read(char *buff, off_t off, size_t size)
    }
    else
    {
-      return ReadInBlocks(buff, off, size);
+      if (m_stopping)
+         return 0;
+      else
+         return ReadInBlocks(buff, off, size);
    }
 }
 

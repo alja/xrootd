@@ -138,22 +138,6 @@ Cache::AddWriteTask(Prefetch* p, int ri, int fi, size_t s)
    m_writeMutex.Signal();
 }
 
-
-//______________________________________________________________________________
-void
-Cache::InvalidatePrefetchFromWriteTasks(Prefetch* p)
-{
-
-   for (std::list<Cache::WriteTask>::iterator i = m_writeQueue.begin(); i!= m_writeQueue.end(); ++i)
-   {
-      if ( i->prefetch == p) {
-         m_writeMutex.Lock();
-         i->prefetch = 0;
-         m_writeMutex.UnLock();
-      }
-   }
-}
-
 //______________________________________________________________________________
 void  
 Cache::ProcessWriteTasks()
