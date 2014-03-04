@@ -370,6 +370,12 @@ bool Factory::ConfigParameters(const char * parameters)
          m_configuration.m_bufferSize = ::atoi(part.c_str());
          clLog()->Info(XrdCl::AppMsg, "Factory::ConfigParameters() bufferSize = %lld", m_configuration.m_bufferSize);
       }
+      else if (part == "-NRamBuffers")
+	{
+	  getline(is, part, ' ');
+	  m_configuration.m_NRamBuffers = ::atoi(part.c_str());
+          clLog()->Info(XrdCl::AppMsg, "Factory::ConfigParameters() NRamBuffers = %d", m_configuration.m_NRamBuffers);
+	}
       else if  ( part == "-blockSize" )
       {
          getline(is, part, ' ');
