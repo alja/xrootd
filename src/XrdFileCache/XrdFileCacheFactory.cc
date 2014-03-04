@@ -367,8 +367,9 @@ bool Factory::ConfigParameters(const char * parameters)
          getline(is, part, ' ');
          // prefetch buffer size is long long because of possible problems
          // after multiplication, but in this stepe it is save to use atoi
-         m_configuration.m_bufferSize = ::atoi(part.c_str());
-         clLog()->Info(XrdCl::AppMsg, "Factory::ConfigParameters() bufferSize = %lld", m_configuration.m_bufferSize);
+         int xm = ::atoi(part.c_str());
+         m_configuration.m_bufferSize = xm*1024*1024;
+         clLog()->Info(XrdCl::AppMsg, "Factory::ConfigParameters() bufferSize %dM => %lld", xm, m_configuration.m_bufferSize);
       }
       else if (part == "-NRamBuffers")
 	{
