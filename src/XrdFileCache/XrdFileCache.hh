@@ -79,6 +79,8 @@ namespace XrdFileCache
          };
          static XrdSysCondVar         m_writeMutex;
          static std::list<WriteTask> m_writeQueue;
+         static size_t                   m_writeQueueSize;
+
       private:
          void Detach(XrdOucCacheIO *);
          bool getFilePathFromURL(const char* url, std::string& res) const;

@@ -35,7 +35,7 @@
 
 XrdSysCondVar XrdFileCache::Cache::m_writeMutex(0);
 std::list<XrdFileCache::Cache::WriteTask> XrdFileCache::Cache::m_writeQueue;
-
+size_t XrdFileCache::Cache::m_writeQueueSize = 0;
 
 using namespace XrdFileCache;
 void *ProcessWriteTaskThread(void* c)
@@ -124,7 +124,7 @@ bool
 Cache::HaveFreeWritingSlots() 
 {
    const static size_t maxWriteWaits=10000;
-   return m_writeQueue.size() < maxWriteWaits;
+   return m_writeQueueSize < maxWriteWaits;
 }
 
 
@@ -135,6 +135,7 @@ Cache::AddWriteTask(Prefetch* p, int ri, int fi, size_t s)
    XrdCl::DefaultEnv::GetLog()->Debug(XrdCl::AppMsg, "Cache::AddWriteTask() bi=%d,  fi=%d, size= %d", ri, fi, (int) s);
    XrdSysCondVarHelper xx(m_writeMutex);
    m_writeQueue.push_back(WriteTask(p, ri, fi, s));
+      m_writeQueueSize++;
    m_writeMutex.Signal();
 }
 
@@ -151,8 +152,10 @@ Cache::ProcessWriteTasks()
       }
       WriteTask t = m_writeQueue.front();
       m_writeQueue.pop_front();  
+      m_writeQueueSize--;
       if (t.prefetch) 
          t.prefetch->WriteBlockToDisk(t.ramBlockIdx, t.fileBlockIdx, t.size); // AMT check in lock all the time is really necessary
+
       m_writeMutex.UnLock();
    }
 }
