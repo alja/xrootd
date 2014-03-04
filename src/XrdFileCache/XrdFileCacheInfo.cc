@@ -172,18 +172,3 @@ bool Info::GetLatestDetachTime(time_t& t, XrdOssDF* fp) const
    if (fu) clLog()->Error(XrdCl::AppMsg, "Info::GetLatestAttachTime() lock failed \n");
    return res;
 }
-
-//______________________________________________________________________________
-
-
-void Info::Print() const
-{
-   printf("blocksSize %lld \n",m_bufferSize );
-   printf("printing [%d] blocks \n", m_sizeInBits);
-   for (int i = 0; i < m_sizeInBits; ++i)
-   {
-      printf("%d ", TestBit(i));
-   }
-   printf("\n");
-   printf("printing complete %d\n", m_complete);
-}
