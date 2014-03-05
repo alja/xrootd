@@ -78,6 +78,9 @@ XrdOucCacheIO *Cache::Attach(XrdOucCacheIO *io, int Options)
 
       m_attached--;
    }
+   else {
+      clLog()->Info(XrdCl::AppMsg, "Cache::Attach() reject %s", io->Path());
+   }
    return io;
 }
 
@@ -135,7 +138,7 @@ Cache::AddWriteTask(Prefetch* p, int ri, int fi, size_t s)
    XrdCl::DefaultEnv::GetLog()->Debug(XrdCl::AppMsg, "Cache::AddWriteTask() bi=%d,  fi=%d, size= %d", ri, fi, (int) s);
    XrdSysCondVarHelper xx(m_writeMutex);
    m_writeQueue.push_back(WriteTask(p, ri, fi, s));
-      m_writeQueueSize++;
+   m_writeQueueSize++;
    m_writeMutex.Signal();
 }
 
@@ -152,10 +155,10 @@ Cache::ProcessWriteTasks()
       }
       WriteTask t = m_writeQueue.front();
       m_writeQueue.pop_front();  
+      m_writeMutex.UnLock();
       m_writeQueueSize--;
       if (t.prefetch) 
          t.prefetch->WriteBlockToDisk(t.ramBlockIdx, t.fileBlockIdx, t.size); // AMT check in lock all the time is really necessary
 
-      m_writeMutex.UnLock();
    }
 }

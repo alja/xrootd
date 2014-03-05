@@ -85,7 +85,7 @@ Prefetch::~Prefetch()
 
       if (m_stopped && tempty)
       {
-         clLog()->Debug(XrdCl::AppMsg, "Prefetch::~Prefetch sleep, waiting queues to empty begin %s", m_input.Path());
+         clLog()->Debug(XrdCl::AppMsg, "Prefetch::~Prefetch sleep, waiting queues to empty begin");
          bool writewait = false;
          for (int i = 0; i < m_ram.m_numBlocks;++i ) {
             if (m_ram.m_blockStates[i]) {
@@ -94,7 +94,7 @@ Prefetch::~Prefetch()
             }
          }
 
-         clLog()->Debug(XrdCl::AppMsg, "Prefetch::~Prefetch sleep, writew  = %d  %s", writewait, m_input.Path());
+         clLog()->Debug(XrdCl::AppMsg, "Prefetch::~Prefetch sleep, writew  = %d");
          if (writewait == false) 
             break;
       }
@@ -106,7 +106,7 @@ Prefetch::~Prefetch()
    // write statistics in *cinfo file
    AppendIOStatToFileInfo();
 
-   clLog()->Info(XrdCl::AppMsg, "Prefetch::~Prefetch close data file %s", m_input.Path());
+   clLog()->Info(XrdCl::AppMsg, "Prefetch::~Prefetch close data file");
 
    if (m_output)
    {
@@ -117,7 +117,7 @@ Prefetch::~Prefetch()
    if (m_infoFile)
    {
       RecordDownloadInfo();
-      clLog()->Info(XrdCl::AppMsg, "Prefetch::~Prefetch close info file %s", m_input.Path());
+      clLog()->Info(XrdCl::AppMsg, "Prefetch::~Prefetch close info file");
 
       m_infoFile->Close();
       delete m_infoFile;
@@ -460,7 +460,7 @@ bool Prefetch::ReadFromTask(int iFileBlockIdx, char* iBuff, long long iOff, size
 
          clLog()->Dump(XrdCl::AppMsg, "Prefetch::ReadFromTask, going to add task fileIdx=%d ", iFileBlockIdx); 
          XrdSysCondVar newTaskCond(0);
-            bool clientreadOK = true;
+         bool clientreadOK = true;
          {
             XrdSysCondVarHelper xx(newTaskCond);
 
@@ -480,10 +480,13 @@ bool Prefetch::ReadFromTask(int iFileBlockIdx, char* iBuff, long long iOff, size
             return true;
          }
          else {
+            clLog()->Debug(XrdCl::AppMsg, "Prefetch::ReadFromTask client read to ram failes"); 
             return false;
          }
       }
+      clLog()->Debug(XrdCl::AppMsg, "Prefetch::ReadFromTask can't get free ram, not enough resources");
    }
+   clLog()->Debug(XrdCl::AppMsg, "Prefetch::ReadFromTask write queue full, not enough resources");
    return false;
 }
 
