@@ -144,7 +144,7 @@ XrdCl::Access::Mode XrdPosixMap::Mode2Access(mode_t mode)
   
 int XrdPosixMap::Result(const XrdCl::XRootDStatus &Status)
 {
-   const char *eText;
+   const char *eText = 0;
    int eNum;
 
 // If all went well, return success
@@ -163,8 +163,10 @@ int XrdPosixMap::Result(const XrdCl::XRootDStatus &Status)
 
 // Trace this if need be
 //
-   if (eNum != ENOENT && eText && *eText && Debug)
-      cerr <<"XrdPosix: " <<eText <<endl;
+
+   //if (eNum != ENOENT && eText && *eText && Debug)
+   //   cerr <<"XrdPosix: " <<eText <<endl;
+
 
 // Return
 //
