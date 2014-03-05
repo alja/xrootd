@@ -32,7 +32,7 @@
 #include "XrdFileCachePrefetch.hh"
 #include "XrdFileCacheFactory.hh"
 #include "XrdFileCache.hh"
-
+   const static int PREFETCH_MAX_ATTEMPTS = 10;
 using namespace XrdFileCache;
 
 Prefetch::RAM::RAM(): m_numBlocks(0),m_buffer(0),  m_blockStates(0)
@@ -338,7 +338,7 @@ Prefetch::GetNextTask(Task& t)
 void
 Prefetch::DoTask(Task& task)
 { 
-   const static int PREFETCH_MAX_ATTEMPTS = 10;
+
    // read block from client  into buffer
 
    long long offset = task.fileBlockIdx * m_cfi.GetBufferSize();
@@ -348,11 +348,11 @@ Prefetch::DoTask(Task& task)
    buff += task.ramBlockIdx * m_cfi.GetBufferSize();
    while (missing)
    {
-      clLog()->Dump(XrdCl::AppMsg, "Prefetch::DoTask() too task for block %d\n %s", task.ramBlockIdx, m_input.Path());
+      clLog()->Dump(XrdCl::AppMsg, "Prefetch::DoTask() too for block %d singal = %d \n %s", task.ramBlockIdx, task.condVar ? 1:0,  m_input.Path());
       int retval = m_input.Read(buff, offset + m_offset, missing);
       if (retval < 0)
       {
-         clLog()->Warning(XrdCl::AppMsg, "Prefetch::DoTask() Failed for negative ret %d block %d %s", retval, task.fileBlockIdx , m_input.Path());
+         clLog()->Warning(XrdCl::AppMsg, "Prefetch::DoTask() failed for negative ret %d block %d %s", retval, task.fileBlockIdx , m_input.Path());
          XrdSysCondVarHelper monitor(m_stateCond);
          //         if (task.ok)  false;  AMT !
          break;
@@ -364,8 +364,6 @@ Prefetch::DoTask(Task& task)
       cnt++;
       if (cnt > PREFETCH_MAX_ATTEMPTS)
       {
-         m_stopping = true;
-         retval = -EINTR;
          break;
       }
 
@@ -374,7 +372,12 @@ Prefetch::DoTask(Task& task)
 
    if (missing)
    {
-      *task.ok = false;
+      if (task.ok) {
+         *task.ok = false;
+      }
+      else {
+         clLog()->Dump(XrdCl::AppMsg, "Prefetch::DoTask() AMT todo handle this case");
+      }
       clLog()->Dump(XrdCl::AppMsg, "Prefetch::DoTask() incomplete read missing %d for block %d %s", missing, task.fileBlockIdx, m_input.Path());
    }
 
@@ -416,6 +419,11 @@ Prefetch::WriteBlockToDisk(int ramIdx, int fileIdx, size_t size)
 
       if (buffer_remaining)        
             clLog()->Warning(XrdCl::AppMsg, "Prefetch::WriteToDisk() reattempt[%d] writing missing %d for block %d %s", cnt,  buffer_remaining, fileIdx, m_input.Path());
+
+      if (cnt > PREFETCH_MAX_ATTEMPTS )
+      {
+            clLog()->Error(XrdCl::AppMsg, "Prefetch::WriteToDisk() write failes too manny attempts %s",  m_input.Path());
+      }
 
    }
 
@@ -553,7 +561,7 @@ ssize_t Prefetch::ReadInBlocks(char *buff, off_t off, size_t size)
             retvalBlock = m_input.Read(buff, off, readBlockSize);
             clLog()->Dump(XrdCl::AppMsg, "Prefetch::ReadInBlocks [%d]  client = %d",blockIdx, retvalBlock);
             m_stats.m_BytesMissed += retvalBlock;
-             }
+         }
       }
      
 
