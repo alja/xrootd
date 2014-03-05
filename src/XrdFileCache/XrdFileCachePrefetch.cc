@@ -35,6 +35,9 @@
    const static int PREFETCH_MAX_ATTEMPTS = 10;
 using namespace XrdFileCache;
 
+bool POK = 0;
+bool PFALSE = 0;
+
 Prefetch::RAM::RAM(): m_numBlocks(0),m_buffer(0),  m_blockStates(0)
 {
    m_numBlocks = Factory::GetInstance().RefConfiguration().m_NRamBuffers;
@@ -354,7 +357,6 @@ Prefetch::DoTask(Task& task)
       {
          clLog()->Warning(XrdCl::AppMsg, "Prefetch::DoTask() failed for negative ret %d block %d %s", retval, task.fileBlockIdx , m_input.Path());
          XrdSysCondVarHelper monitor(m_stateCond);
-         //         if (task.ok)  false;  AMT !
          break;
       }
 
@@ -370,14 +372,9 @@ Prefetch::DoTask(Task& task)
    }
 
 
-   if (missing)
+   * task.ok = (missing == 0);
+   if (! *task.ok)
    {
-      if (task.ok) {
-         *task.ok = false;
-      }
-      else {
-         clLog()->Dump(XrdCl::AppMsg, "Prefetch::DoTask() AMT todo handle this case");
-      }
       clLog()->Dump(XrdCl::AppMsg, "Prefetch::DoTask() incomplete read missing %d for block %d %s", missing, task.fileBlockIdx, m_input.Path());
    }
 
@@ -388,7 +385,7 @@ Prefetch::DoTask(Task& task)
    }
 
    // queue for ram to disk write
-   Cache::AddWriteTask(this, task.ramBlockIdx, task.fileBlockIdx, task.size);
+   if (*task.ok) Cache::AddWriteTask(this, task.ramBlockIdx, task.fileBlockIdx, task.size);
 }
 
 
@@ -468,7 +465,7 @@ bool Prefetch::ReadFromTask(int iFileBlockIdx, char* iBuff, long long iOff, size
 
          clLog()->Dump(XrdCl::AppMsg, "Prefetch::ReadFromTask, going to add task fileIdx=%d ", iFileBlockIdx); 
          XrdSysCondVar newTaskCond(0);
-         bool clientreadOK = true;
+         bool clientreadOK = false;
          {
             XrdSysCondVarHelper xx(newTaskCond);
 
@@ -481,14 +478,15 @@ bool Prefetch::ReadFromTask(int iFileBlockIdx, char* iBuff, long long iOff, size
             newTaskCond.Wait();
          }
          clLog()->Dump(XrdCl::AppMsg, "Prefetch::ReadFromTask memcpy from RAM to IO::buffer fileIdx=%d ", iFileBlockIdx);
-         if (clientreadOK) { // task is OK ?
+         if (clientreadOK)
+         {
             long long inBlockOff = iOff - iFileBlockIdx * m_cfi.GetBufferSize();
             char* srcBuff =  m_ram.m_buffer  + ramIdx*m_cfi.GetBufferSize(); 
             memcpy(iBuff, srcBuff + inBlockOff, iSize);
             return true;
          }
          else {
-            clLog()->Debug(XrdCl::AppMsg, "Prefetch::ReadFromTask client read to ram failes"); 
+            clLog()->Error(XrdCl::AppMsg, "Prefetch::ReadFromTask client fileIdx=%d failed", iFileBlockIdx); 
             return false;
          }
       }
@@ -554,12 +552,12 @@ ssize_t Prefetch::ReadInBlocks(char *buff, off_t off, size_t size)
          {
             retvalBlock = readBlockSize; // presume since ReadFromTask did not fail, could pass a refrence to ReadFromTask
             m_stats.m_BytesRam += retvalBlock;
-            clLog()->Dump(XrdCl::AppMsg, "Prefetch::ReadInBlocks [%d]  ram = %d",blockIdx, retvalBlock);
+            clLog()->Dump(XrdCl::AppMsg, "Prefetch::ReadInBlocks [%d]  ram = %d", blockIdx, retvalBlock);
          }
          else
          {
             retvalBlock = m_input.Read(buff, off, readBlockSize);
-            clLog()->Dump(XrdCl::AppMsg, "Prefetch::ReadInBlocks [%d]  client = %d",blockIdx, retvalBlock);
+            clLog()->Dump(XrdCl::AppMsg, "Prefetch::ReadInBlocks [%d]  client = %d", blockIdx, retvalBlock);
             m_stats.m_BytesMissed += retvalBlock;
          }
       }

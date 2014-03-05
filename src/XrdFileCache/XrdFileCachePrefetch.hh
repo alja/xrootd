@@ -84,7 +84,7 @@ namespace XrdFileCache
             XrdSysCondVar *condVar;      //!< signal when complete
             bool* ok;
 
-            Task(): fileBlockIdx(-1), ramBlockIdx(-1), size(0), condVar(0), ok(0) { }
+            Task(): fileBlockIdx(-1), ramBlockIdx(-1), size(0), condVar(0), ok(0) { ok = new bool;}
             Task(int b, int r, size_t s, XrdSysCondVar *cv, bool* rs):
                fileBlockIdx(b), ramBlockIdx(r), size(s), condVar(cv), ok(rs) {}
            ~Task() {}
