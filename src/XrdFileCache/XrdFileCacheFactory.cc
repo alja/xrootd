@@ -390,8 +390,8 @@ bool Factory::ConfigParameters(const char * parameters)
 
 bool Factory::Decide(XrdOucCacheIO* io)
 {
-   if ( CheckFileForDiskSpace(io->Path(), io->FSize()) == false )
-      return false;
+   //   if ( CheckFileForDiskSpace(io->Path(), io->FSize()) == false )
+   //  return false;
 
    if(!m_decisionpoints.empty())
    {
