@@ -84,7 +84,7 @@ namespace XrdFileCache
             XrdSysCondVar *condVar;      //!< signal when complete
             bool* ok;
 
-            Task(): fileBlockIdx(-1), ramBlockIdx(-1), size(0), condVar(0), ok(0) { ok = new bool;}
+            Task(): fileBlockIdx(-1), ramBlockIdx(-1), size(0), condVar(0), ok(0) {}
             Task(int b, int r, size_t s, XrdSysCondVar *cv, bool* rs):
                fileBlockIdx(b), ramBlockIdx(r), size(s), condVar(cv), ok(rs) {}
            ~Task() {}
@@ -106,7 +106,7 @@ namespace XrdFileCache
          void CloseCleanly();
 
          //! Get blocks to prefetch.
-         bool GetNextTask(Task&);
+         Task* GetNextTask();
 
          //! Open file handle for data file and info file on local disk.
          bool Open();
@@ -118,7 +118,7 @@ namespace XrdFileCache
 
          ssize_t ReadInBlocks( char* buff, off_t offset, size_t size);
          bool    ReadFromTask(int bIdx, char* buff, long long off, size_t size);
-         void    DoTask(Task& task);
+         void    DoTask(Task* task);
 
          RAM             m_ram;            //!< in memory cache
 
@@ -139,7 +139,7 @@ namespace XrdFileCache
 
          XrdSysMutex      m_downloadStatusMutex; //!< mutex locking access to m_cfi object
 
-         std::queue<Task> m_tasks_queue; //!< download queue
+         std::queue<Task*> m_tasks_queue; //!< download queue
          XrdSysCondVar    m_queueMutex;
 
          Stats            m_stats;      //!< cache statistics, used in IO detach
