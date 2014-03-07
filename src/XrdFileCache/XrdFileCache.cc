@@ -135,7 +135,7 @@ Cache::HaveFreeWritingSlots()
 void
 Cache::AddWriteTask(Prefetch* p, int ri, int fi, size_t s)
 {
-   XrdCl::DefaultEnv::GetLog()->Debug(XrdCl::AppMsg, "Cache::AddWriteTask() bi=%d,  fi=%d, size= %d", ri, fi, (int) s);
+   XrdCl::DefaultEnv::GetLog()->Debug(XrdCl::AppMsg, "Cache::AddWriteTask() wqsize = %d, bi=%d,  fi=%d, size= %d", m_writeQueueSize, ri, fi, (int) s);
    XrdSysCondVarHelper xx(m_writeMutex);
    m_writeQueue.push_back(WriteTask(p, ri, fi, s));
    m_writeQueueSize++;
