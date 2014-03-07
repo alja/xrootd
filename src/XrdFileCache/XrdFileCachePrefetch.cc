@@ -342,9 +342,8 @@ Prefetch::GetNextTask()
       }
    }
 
-   Task *task = m_tasks_queue.front();
+   Task *task = m_tasks_queue.pop_front();
    clLog()->Debug(XrdCl::AppMsg, "Prefetch::GetNextTask() [%d] from queue %s", task->fileBlockIdx, m_input.Path());
-   m_tasks_queue.pop();
    m_queueMutex.UnLock(); 
    return task;   
 }
@@ -477,7 +476,7 @@ bool Prefetch::ReadFromTask(int iFileBlockIdx, char* iBuff, long long iOff, size
             XrdSysCondVarHelper xx(newTaskCond);
 
             m_queueMutex.Lock();
-            m_tasks_queue.push(new Task(iFileBlockIdx, ramIdx, taskSize, &newTaskCond, &clientreadOK));
+            m_tasks_queue.push_front(new Task(iFileBlockIdx, ramIdx, taskSize, &newTaskCond, &clientreadOK));
 
             m_queueMutex.Signal();
             m_queueMutex.UnLock();
