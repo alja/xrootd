@@ -33,9 +33,7 @@
 #include "XrdFileCachePrefetch.hh"
 
 
-XrdSysCondVar XrdFileCache::Cache::m_writeMutex(0);
-std::list<XrdFileCache::Cache::WriteTask> XrdFileCache::Cache::m_writeQueue;
-size_t XrdFileCache::Cache::m_writeQueueSize = 0;
+XrdFileCache::Cache::WriteQ XrdFileCache::Cache::s_writeQ;
 
 using namespace XrdFileCache;
 void *ProcessWriteTaskThread(void* c)
@@ -48,7 +46,6 @@ void *ProcessWriteTaskThread(void* c)
 Cache::Cache(XrdOucCacheStats & stats)
    : m_attached(0),
      m_stats(stats)
-     //   m_writeMutex(0)
 {
    pthread_t tid;
    XrdSysThread::Run(&tid, ProcessWriteTaskThread, (void*)this, 0, "XrdFileCache WriteTasks ");
@@ -127,7 +124,7 @@ bool
 Cache::HaveFreeWritingSlots() 
 {
    const static size_t maxWriteWaits=10000;
-   return m_writeQueueSize < maxWriteWaits;
+   return s_writeQ.size < maxWriteWaits;
 }
 
 
@@ -135,11 +132,12 @@ Cache::HaveFreeWritingSlots()
 void
 Cache::AddWriteTask(Prefetch* p, int ri, int fi, size_t s)
 {
-   XrdCl::DefaultEnv::GetLog()->Debug(XrdCl::AppMsg, "Cache::AddWriteTask() wqsize = %d, bi=%d,  fi=%d, size= %d", m_writeQueueSize, ri, fi, (int) s);
-   XrdSysCondVarHelper xx(m_writeMutex);
-   m_writeQueue.push_back(WriteTask(p, ri, fi, s));
-   m_writeQueueSize++;
-   m_writeMutex.Signal();
+   XrdCl::DefaultEnv::GetLog()->Debug(XrdCl::AppMsg, "Cache::AddWriteTask() wqsize = %d, bi=%d,  fi=%d, size= %d", s_writeQ.size, ri, fi, (int) s);
+   s_writeQ.mutex.Lock();
+   s_writeQ.queue.push_back(WriteTask(p, ri, fi, s));
+   s_writeQ.size++;
+   s_writeQ.mutex.Signal();
+   s_writeQ.mutex.UnLock();
 }
 
 //______________________________________________________________________________
@@ -148,15 +146,15 @@ Cache::ProcessWriteTasks()
 {
    while (true)
    {
-      m_writeMutex.Lock();
-      if (m_writeQueue.empty())
+      s_writeQ.mutex.Lock();
+      if (s_writeQ.queue.empty())
       {
-         m_writeMutex.Wait();
+         s_writeQ.mutex.Wait();
       }
-      WriteTask t = m_writeQueue.front();
-      m_writeQueue.pop_front();  
-      m_writeMutex.UnLock();
-      m_writeQueueSize--;
+      WriteTask t = s_writeQ.queue.front();
+      s_writeQ.queue.pop_front();
+      s_writeQ.size--;  
+      s_writeQ.mutex.UnLock();
       if (t.prefetch) 
          t.prefetch->WriteBlockToDisk(t.ramBlockIdx, t.fileBlockIdx, t.size); // AMT check in lock all the time is really necessary
 

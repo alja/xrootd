@@ -77,9 +77,15 @@ namespace XrdFileCache
             size_t size;
             WriteTask(Prefetch* p, int ri, int fi, size_t s):prefetch(p), ramBlockIdx(ri), fileBlockIdx(fi), size(s){}
          };
-         static XrdSysCondVar         m_writeMutex;
-         static std::list<WriteTask> m_writeQueue;
-         static size_t                   m_writeQueueSize;
+
+      struct WriteQ {
+         WriteQ(): mutex(0), size(0) {}
+         XrdSysCondVar         mutex;
+         size_t                size;
+         std::list<WriteTask>  queue;
+      };
+
+      static WriteQ s_writeQ;
 
       private:
          void Detach(XrdOucCacheIO *);
