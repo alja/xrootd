@@ -278,8 +278,6 @@ Prefetch::GetNextTask()
 
    while (m_tasks_queue.empty())
    {
-      if (m_stopping) return false;
-
       if (m_queueMutex.WaitMS(500))
       {
          m_queueMutex.UnLock(); 
@@ -337,14 +335,20 @@ Prefetch::GetNextTask()
             clLog()->Dump(XrdCl::AppMsg, "Prefetch::GetNextTask() read first unread block=%d ramIdx=%d size = %d", t.fileBlockIdx, t.ramBlockIdx, t.size );
             return task;
          }
-
          clLog()->Dump(XrdCl::AppMsg, "Prefetch::GetNextTask() [%d] no resources, reentering. File %s", t.fileBlockIdx, m_input.Path());
+
       }
+      else 
+      {
+         clLog()->Dump(XrdCl::AppMsg, "Prefetch::GetNewtask awaited ");
+      }    
+      // m_queueMutex.Lock();
    }
 
-   Task *task = m_tasks_queue.pop_front();
-   clLog()->Debug(XrdCl::AppMsg, "Prefetch::GetNextTask() [%d] from queue %s", task->fileBlockIdx, m_input.Path());
+   Task *task = m_tasks_queue.front();
+   m_tasks_queue.pop_front();
    m_queueMutex.UnLock(); 
+   clLog()->Debug(XrdCl::AppMsg, "Prefetch::GetNextTask() [%d] from queue %s", task->fileBlockIdx, m_input.Path());
    return task;   
 }
 
