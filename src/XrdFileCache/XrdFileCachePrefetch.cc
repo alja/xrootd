@@ -74,7 +74,7 @@ Prefetch::Prefetch(XrdOucCacheIO &inputIO, std::string& disk_file_path, long lon
 Prefetch::~Prefetch()
 {
    // see if we have to shut down
-   clLog()->Info(XrdCl::AppMsg, "Prefetch::~Prefetch()");
+   clLog()->Info(XrdCl::AppMsg, "Prefetch::~Prefetch() %p ", (void*)this);
 
    if (m_started == false) return;
 
@@ -82,11 +82,7 @@ Prefetch::~Prefetch()
 
    while (true)
    {
-      m_queueMutex.Lock();
-      bool tempty = m_tasks_queue.empty();
-      m_queueMutex.UnLock();
-
-      if (m_stopped && tempty)
+      if (m_stopped)
       {
          clLog()->Debug(XrdCl::AppMsg, "Prefetch::~Prefetch sleep, waiting queues to empty begin");
          bool writewait = false;
@@ -109,7 +105,7 @@ Prefetch::~Prefetch()
    // write statistics in *cinfo file
    AppendIOStatToFileInfo();
 
-   clLog()->Info(XrdCl::AppMsg, "Prefetch::~Prefetch close data file");
+   clLog()->Info(XrdCl::AppMsg, "Prefetch::~Prefetch close data file %p",(void*)this );
 
    if (m_output)
    {
@@ -149,6 +145,11 @@ bool Prefetch::Open()
          return false;
       }
    }
+   else {
+      clLog()->Error(XrdCl::AppMsg, "Prefetch::Open() can't get data holder ");
+      return false;
+   }
+
    // Create the info file
    std::string ifn = m_temp_filename + Info::m_infoExtension;
    m_output_fs.Create(Factory::GetInstance().RefConfiguration().m_username.c_str(), ifn.c_str(), 0600, myEnv, XRDOSS_mkpath);
@@ -167,6 +168,10 @@ bool Prefetch::Open()
 
          return false;
       }
+   }
+   if (!m_infoFile)
+   {
+      return false;
    }
    if ( m_cfi.Read(m_infoFile) <= 0)
    {
@@ -248,11 +253,13 @@ Prefetch::Run()
       if (numReadBlocks % 10)
          RecordDownloadInfo();
 
+      /*
       if (m_stopping)
       {
          clLog()->Dump(XrdCl::AppMsg, "Prefetch::Run() stopping for a clean cause");
          break;
-      }
+         }
+      */
 
    }  // loop tasks
 
@@ -278,6 +285,8 @@ Prefetch::GetNextTask()
 
    while (m_tasks_queue.empty())
    {
+      if (m_stopping) { m_queueMutex.UnLock(); return false;}
+
       if (m_queueMutex.WaitMS(500))
       {
          m_queueMutex.UnLock(); 
@@ -317,6 +326,7 @@ Prefetch::GetNextTask()
                   if (m_ram.m_blockStates[i] == 0)
                   {
                      t.ramBlockIdx = i;
+                     m_ram.m_blockStates[i] = 1;
                      break;
                   }
                }
@@ -459,6 +469,7 @@ bool Prefetch::ReadFromTask(int iFileBlockIdx, char* iBuff, long long iOff, size
          if (m_ram.m_blockStates[i] == 0)
          {
             ramIdx = i;
+            m_ram.m_blockStates[i] = 1;
             break;
          }
       }
