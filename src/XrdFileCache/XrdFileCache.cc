@@ -155,8 +155,8 @@ Cache::ProcessWriteTasks()
       s_writeQ.queue.pop_front();
       s_writeQ.size--;  
       s_writeQ.mutex.UnLock();
-      if (t.prefetch) 
-         t.prefetch->WriteBlockToDisk(t.ramBlockIdx, t.fileBlockIdx, t.size); // AMT check in lock all the time is really necessary
+
+      t.prefetch->WriteBlockToDisk(t.ramBlockIdx, t.fileBlockIdx, t.size); // AMT check in lock all the time is really necessary
 
    }
 }
