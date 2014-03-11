@@ -82,7 +82,7 @@ Prefetch::~Prefetch()
 
    while (true)
    {
-      if (m_stopped)
+      if (m_stopped )
       {
          clLog()->Debug(XrdCl::AppMsg, "Prefetch::~Prefetch sleep, waiting queues to empty begin");
          bool writewait = false;
@@ -128,7 +128,7 @@ Prefetch::~Prefetch()
 
 bool Prefetch::Open()
 {
-   clLog()->Debug(XrdCl::AppMsg, "Prefetch::Open() open file for disk cache %s", m_input.Path());
+   // clLog()->Debug(XrdCl::AppMsg, "Prefetch::Open() open file for disk cache %s", m_input.Path());
    XrdOss  &m_output_fs =  *Factory::GetInstance().GetOss();
    // Create the data file itself.
    XrdOucEnv myEnv;
@@ -146,7 +146,7 @@ bool Prefetch::Open()
       }
    }
    else {
-      clLog()->Error(XrdCl::AppMsg, "Prefetch::Open() can't get data holder ");
+        clLog()->Error(XrdCl::AppMsg, "Prefetch::Open() can't get data holder ");
       return false;
    }
 
@@ -287,7 +287,7 @@ Prefetch::GetNextTask()
 
    while (m_tasks_queue.empty())
    {
-      if (m_stopping) { m_queueMutex.UnLock(); return false;}
+      if (m_stopping) { m_queueMutex.UnLock(); return 0;}
 
       if (m_queueMutex.WaitMS(500))
       {
@@ -382,7 +382,6 @@ Prefetch::DoTask(Task* task)
       if (retval < 0)
       {
          clLog()->Warning(XrdCl::AppMsg, "Prefetch::DoTask() failed for negative ret %d block %d %s", retval, task->fileBlockIdx , m_input.Path());
-         XrdSysCondVarHelper monitor(m_stateCond);
          break;
       }
 
@@ -407,7 +406,7 @@ Prefetch::DoTask(Task* task)
    {
       m_ram.m_writeMutex.Lock();
       m_ram.m_blockStates[task->ramBlockIdx] = 0;
-      m_ram.m_writeMutex.Lock();
+      m_ram.m_writeMutex.UnLock();
       clLog()->Dump(XrdCl::AppMsg, "Prefetch::DoTask() incomplete read missing %d for block %d %s", missing, task->fileBlockIdx, m_input.Path());
    }
 }
