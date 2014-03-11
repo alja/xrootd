@@ -230,7 +230,9 @@ Prefetch::Run()
          if (task->condVar)
          {
             clLog()->Warning(XrdCl::AppMsg, "Prefetch::Run() signal already downloaded");
-
+            m_ram.m_writeMutex.Lock();
+            m_ram.m_blockStates[task->ramBlockIdx] = 0;
+            m_ram.m_writeMutex.UnLock();
             XrdSysCondVarHelper(*task->condVar);
             task->condVar->Signal();
          }
@@ -403,6 +405,9 @@ Prefetch::DoTask(Task* task)
    }
    else
    {
+      m_ram.m_writeMutex.Lock();
+      m_ram.m_blockStates[task->ramBlockIdx] = 0;
+      m_ram.m_writeMutex.Lock();
       clLog()->Dump(XrdCl::AppMsg, "Prefetch::DoTask() incomplete read missing %d for block %d %s", missing, task->fileBlockIdx, m_input.Path());
    }
 }
@@ -448,7 +453,7 @@ Prefetch::WriteBlockToDisk(int ramIdx, int fileIdx, size_t size)
    m_downloadStatusMutex.Lock();
    m_cfi.SetBit(fileIdx);
    m_downloadStatusMutex.UnLock();
-
+ 
    // mark ram block available
    m_ram.m_writeMutex.Lock();
    m_ram.m_blockStates[ramIdx] = 0;
@@ -569,7 +574,7 @@ ssize_t Prefetch::ReadInBlocks(char *buff, off_t off, size_t size)
       }
       else 
       {
-         if (ReadFromTask(blockIdx, buff, off, readBlockSize))
+         if ( ReadFromTask(blockIdx, buff, off, readBlockSize))
          {
             retvalBlock = readBlockSize; // presume since ReadFromTask did not fail, could pass a refrence to ReadFromTask
             m_stats.m_BytesRam += retvalBlock;
