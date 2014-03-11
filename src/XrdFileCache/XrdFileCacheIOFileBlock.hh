@@ -73,6 +73,7 @@ namespace XrdFileCache
          std::map<int, FileBlock*>  m_blocks;    //!< map of created blocks
          XrdSysMutex                m_mutex;     //!< map mutex
 
+         void  GetBlockSizeFromPath();
          FileBlock* newBlockPrefetcher(long long off, int blocksize, XrdOucCacheIO* io);
    };
 }
