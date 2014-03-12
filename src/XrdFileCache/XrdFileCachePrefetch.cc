@@ -74,7 +74,7 @@ Prefetch::Prefetch(XrdOucCacheIO &inputIO, std::string& disk_file_path, long lon
 Prefetch::~Prefetch()
 {
    // see if we have to shut down
-   clLog()->Info(XrdCl::AppMsg, "Prefetch::~Prefetch() %p ", (void*)this);
+   clLog()->Info(XrdCl::AppMsg, "Prefetch::~Prefetch() %p %s", (void*)this, m_input.Path());
 
    if (m_started == false) return;
 
@@ -88,6 +88,8 @@ Prefetch::~Prefetch()
          bool writewait = false;
          for (int i = 0; i < m_ram.m_numBlocks;++i ) {
             if (m_ram.m_blockStates[i]) {
+               
+   clLog()->Info(XrdCl::AppMsg, "Prefetch::~Prefetch() ram block %d occupied %s", m_ram.m_blockStates[i], m_input.Path());
                writewait = true;
                break;
             }
@@ -219,21 +221,9 @@ Prefetch::Run()
    int numReadBlocks = 0;
    while ((task = GetNextTask()) != 0)
    { 
-      bool already;
-      m_downloadStatusMutex.Lock();
-      already = m_cfi.TestBit(task->fileBlockIdx);
-      m_downloadStatusMutex.UnLock();
-      if (already)
-      {
-         clLog()->Debug(XrdCl::AppMsg, "Prefetch::Run() block [%d] already done, continue ... %s",task->fileBlockIdx , m_input.Path());
-         if(task->ok) *task->ok = true;
-      }
-      else
-      {
-         clLog()->Dump(XrdCl::AppMsg, "Prefetch::Run() download block [%d] %s", task->fileBlockIdx, m_input.Path());
-         DoTask(task);
-      }
-
+      clLog()->Dump(XrdCl::AppMsg, "Prefetch::Run() do task for block [%d] %s", task->fileBlockIdx, m_input.Path());
+      DoTask(task);
+      
       if (task->condVar)
       {
          clLog()->Debug(XrdCl::AppMsg, "Prefetch::Run() valgrind task %p condvar %p",  task, task->condVar);
@@ -330,7 +320,7 @@ Prefetch::GetNextTask()
             else 
                t.size = m_cfi.GetBufferSize();
 
-            clLog()->Dump(XrdCl::AppMsg, "Prefetch::GetNextTask() read first unread block=%d ramIdx=%d size = %d", t.fileBlockIdx, t.ramBlockIdx, t.size );
+            clLog()->Dump(XrdCl::AppMsg, "Prefetch::GetNextTask() read first unread block=%d ramIdx=%d size = %d path %s", t.fileBlockIdx, t.ramBlockIdx, t.size,   m_input.Path());
             return task;
          }
          clLog()->Dump(XrdCl::AppMsg, "Prefetch::GetNextTask() [%d] no resources, reentering. File %s", t.fileBlockIdx, m_input.Path());
@@ -354,8 +344,21 @@ Prefetch::GetNextTask()
 void
 Prefetch::DoTask(Task* task)
 { 
-   // read block from client  into buffer
+   bool already;
+   m_downloadStatusMutex.Lock();
+   already = m_cfi.TestBit(task->fileBlockIdx);
+   m_downloadStatusMutex.UnLock();
+   if (already)
+   {
+      clLog()->Debug(XrdCl::AppMsg, "Prefetch::DoTask() block [%d] already done, continue ... %s",task->fileBlockIdx , m_input.Path());
+      m_ram.m_writeMutex.Lock();
+      m_ram.m_blockStates[task->ramBlockIdx] = 0;
+      m_ram.m_writeMutex.UnLock();
+      if(task->ok) *task->ok = true;
+      return;
+   }
 
+   // read block from client  into buffer
    long long offset = task->fileBlockIdx * m_cfi.GetBufferSize();
    int missing =  task->size;
    int cnt = 0;
@@ -363,7 +366,7 @@ Prefetch::DoTask(Task* task)
    buff += task->ramBlockIdx * m_cfi.GetBufferSize();
    while (missing)
    {
-      clLog()->Dump(XrdCl::AppMsg, "Prefetch::DoTask() too for block %d singal = %d \n %s", task->ramBlockIdx, task->condVar ? 1:0,  m_input.Path());
+      clLog()->Dump(XrdCl::AppMsg, "Prefetch::DoTask() for block f = %d r = %dsingal = %p  %s", task->fileBlockIdx, task->ramBlockIdx, task->condVar,  m_input.Path());
       int retval = m_input.Read(buff, offset + m_offset, missing);
       if (retval < 0)
       {
@@ -381,7 +384,7 @@ Prefetch::DoTask(Task* task)
       }
    }
 
-    if (missing == 0)
+   if (missing == 0)
    {
       // queue for ram to disk write
       Cache::AddWriteTask(this, task->ramBlockIdx, task->fileBlockIdx, task->size);
