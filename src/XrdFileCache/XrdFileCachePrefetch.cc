@@ -226,42 +226,28 @@ Prefetch::Run()
       if (already)
       {
          clLog()->Debug(XrdCl::AppMsg, "Prefetch::Run() block [%d] already done, continue ... %s",task->fileBlockIdx , m_input.Path());
-         
-         if (task->condVar)
-         {
-            clLog()->Warning(XrdCl::AppMsg, "Prefetch::Run() signal already downloaded");
-            m_ram.m_writeMutex.Lock();
-            m_ram.m_blockStates[task->ramBlockIdx] = 0;
-            m_ram.m_writeMutex.UnLock();
-            XrdSysCondVarHelper(*task->condVar);
-            task->condVar->Signal();
-         }
-         continue;
+         if(task->ok) *task->ok = true;
       }
       else
       {
          clLog()->Dump(XrdCl::AppMsg, "Prefetch::Run() download block [%d] %s", task->fileBlockIdx, m_input.Path());
+         DoTask(task);
       }
 
-      DoTask(task);
       if (task->condVar)
       {
-         XrdSysCondVarHelper(*task->condVar);
+         clLog()->Debug(XrdCl::AppMsg, "Prefetch::Run() valgrind task %p condvar %p",  task, task->condVar);
+         XrdSysCondVarHelper(task->condVar);
          task->condVar->Signal();
       }
+
+      clLog()->Debug(XrdCl::AppMsg, "Prefetch::Run() delete task %p condvar %p",  task, task->condVar);
       delete task;
 
       numReadBlocks++;
       if (numReadBlocks % 10)
          RecordDownloadInfo();
 
-      /*
-      if (m_stopping)
-      {
-         clLog()->Dump(XrdCl::AppMsg, "Prefetch::Run() stopping for a clean cause");
-         break;
-         }
-      */
 
    }  // loop tasks
 
@@ -493,18 +479,17 @@ bool Prefetch::ReadFromTask(int iFileBlockIdx, char* iBuff, long long iOff, size
          bool clientreadOK = false;
          {
             XrdSysCondVarHelper xx(newTaskCond);
-
+            Task* task = new Task(iFileBlockIdx, ramIdx, taskSize, &newTaskCond, &clientreadOK);
             m_queueMutex.Lock();
-            m_tasks_queue.push_front(new Task(iFileBlockIdx, ramIdx, taskSize, &newTaskCond, &clientreadOK));
-
+            m_tasks_queue.push_front(task);
             m_queueMutex.Signal();
             m_queueMutex.UnLock();
-
+            clLog()->Dump(XrdCl::AppMsg, "Prefetch::ReadFromTask valgrind wait task %p confvar %p",  task, task->condVar);
             newTaskCond.Wait();
          }
-         clLog()->Dump(XrdCl::AppMsg, "Prefetch::ReadFromTask memcpy from RAM to IO::buffer fileIdx=%d ", iFileBlockIdx);
          if (clientreadOK)
          {
+            clLog()->Dump(XrdCl::AppMsg, "Prefetch::ReadFromTask memcpy from RAM to IO::buffer fileIdx=%d ", iFileBlockIdx);
             long long inBlockOff = iOff - iFileBlockIdx * m_cfi.GetBufferSize();
             char* srcBuff =  m_ram.m_buffer  + ramIdx*m_cfi.GetBufferSize(); 
             memcpy(iBuff, srcBuff + inBlockOff, iSize);
