@@ -120,7 +120,9 @@ namespace XrdFileCache
          bool    ReadFromTask(int bIdx, char* buff, long long off, size_t size);
          void    DoTask(Task* task);
 
-      bool IsTaskQueueEmpty();
+          bool IsTaskQueueEmpty();
+         Task* GetTaskForFirstUndownloadedBlock();
+
          RAM             m_ram;            //!< in memory cache
 
          XrdOssDF       *m_output;         //!< file handle for data file on disk

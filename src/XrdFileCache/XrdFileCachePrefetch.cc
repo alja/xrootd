@@ -253,92 +253,108 @@ Prefetch::Run()
 } // end Run()
 
 
+//______________________________________________________________________________
+Prefetch::Task*
+Prefetch::GetTaskForFirstUndownloadedBlock()
+{
+    m_downloadStatusMutex.Lock();
+
+    Task *task = new Task;
+    Task &t = * task;
+    t.fileBlockIdx = -1;
+    t.ramBlockIdx = -1;
+    for (int i = 0; i < m_cfi.GetSizeInBits(); ++i)
+    {
+        if (m_cfi.TestBit(i) == false)
+        {
+            t.fileBlockIdx = i;
+            t.condVar = 0;
+            break;
+        }
+    }
+    m_downloadStatusMutex.UnLock();
+
+    if (t.fileBlockIdx >= 0 )
+    {
+        if (Cache::HaveFreeWritingSlots())
+        {
+            m_ram.m_writeMutex.Lock();
+            for (int i =0 ; i < m_ram.m_numBlocks; ++i) 
+            {
+                if (m_ram.m_blockStates[i] == 0)
+                {
+                    t.ramBlockIdx = i;
+                    m_ram.m_blockStates[i] = 1;
+                    break;
+                }
+            }
+
+            m_ram.m_writeMutex.UnLock();
+        }
+    }
+
+    if (t.ramBlockIdx >= 0)
+    {
+        if (t.fileBlockIdx == (m_cfi.GetSizeInBits() -1))
+            t.size =  m_input.FSize() - t.fileBlockIdx*m_cfi.GetBufferSize(); 
+        else 
+            t.size = m_cfi.GetBufferSize();
+
+        clLog()->Dump(XrdCl::AppMsg, "Prefetch::GetTaskForFirstUndownloadedBlock success");
+        return task;
+    }
+
+    delete task;
+    return 0;
+}
+
+//______________________________________________________________________________
+bool
+Prefetch::IsTaskQueueEmpty() {
+    bool x;
+    m_queueMutex.Lock(); 
+    x = m_tasks_queue.empty();
+    m_queueMutex.UnLock();
+    return x; 
+}
+
 //_____________________________________________________________________________
 Prefetch::Task*
 Prefetch::GetNextTask()
 {
-   clLog()->Dump(XrdCl::AppMsg, "Prefetch::GetNextTask() begin ");
+   clLog()->Dump(XrdCl::AppMsg, "Prefetch::GetNextTask begin ");
 
-   m_queueMutex.Lock();
 
-   while (m_tasks_queue.empty())
+   while (IsTaskQueueEmpty())
    {
-      if (m_stopping) { m_queueMutex.UnLock(); return 0;}
+      if (m_stopping) { return 0;}
 
+      m_queueMutex.Lock(); 
       if (m_queueMutex.WaitMS(500))
       {
          m_queueMutex.UnLock(); 
-
-         m_downloadStatusMutex.Lock();
-
-         Task *task = new Task;
-         Task &t = * task;
-         t.fileBlockIdx = -1;
-         t.ramBlockIdx = -1;
-         for (int i = 0; i < m_cfi.GetSizeInBits(); ++i)
-         {
-            if (m_cfi.TestBit(i) == false)
-            {
-               t.fileBlockIdx = i;
-               t.condVar = 0;
-               break;
-            }
-         }
-         m_downloadStatusMutex.UnLock();
-
-         if (t.fileBlockIdx == -1)
-         {
-            // download complete ?? AMT this should be handled differently
-            clLog()->Dump(XrdCl::AppMsg, "Prefetch::GetNextTask() file completed (blockssize  = %d) %s",m_cfi.GetSizeInBits(), m_input.Path());
-            delete task;
-            return 0;
-         }
-
-         if (t.fileBlockIdx >= 0 )
-         {
-            if (Cache::HaveFreeWritingSlots())
-            {
-               m_ram.m_writeMutex.Lock();
-               for (int i =0 ; i < m_ram.m_numBlocks; ++i) 
-               {
-                  if (m_ram.m_blockStates[i] == 0)
-                  {
-                     t.ramBlockIdx = i;
-                     m_ram.m_blockStates[i] = 1;
-                     break;
-                  }
-               }
-
-               m_ram.m_writeMutex.UnLock();
-            }
-         }
-
-         if (t.ramBlockIdx >= 0)
-         {
-            if (t.fileBlockIdx == (m_cfi.GetSizeInBits() -1))
-               t.size =  m_input.FSize() - t.fileBlockIdx*m_cfi.GetBufferSize(); 
-            else 
-               t.size = m_cfi.GetBufferSize();
-
-            clLog()->Dump(XrdCl::AppMsg, "Prefetch::GetNextTask() read first unread block=%d ramIdx=%d size = %d path %s", t.fileBlockIdx, t.ramBlockIdx, t.size,   m_input.Path());
-            return task;
-         }
-         clLog()->Dump(XrdCl::AppMsg, "Prefetch::GetNextTask() [%d] no resources, reentering. File %s", t.fileBlockIdx, m_input.Path());
-
+         Task* t = GetTaskForFirstUndownloadedBlock();
+         if (t)  return t;
+         
+         clLog()->Dump(XrdCl::AppMsg, "Prefetch::GetNextTask  no resources, reentering %s", m_input.Path());
       }
       else 
       {
-         clLog()->Dump(XrdCl::AppMsg, "Prefetch::GetNewtask awaited ");
-      }    
-      // m_queueMutex.Lock();
+         m_queueMutex.UnLock(); 
+         clLog()->Dump(XrdCl::AppMsg, "Prefetch::GetNewTask awaited ");
+      }
    }
 
+   m_queueMutex.Lock();
    Task *task = m_tasks_queue.front();
    m_tasks_queue.pop_front();
    m_queueMutex.UnLock(); 
-   clLog()->Debug(XrdCl::AppMsg, "Prefetch::GetNextTask() [%d] from queue %s", task->fileBlockIdx, m_input.Path());
+   clLog()->Debug(XrdCl::AppMsg, "Prefetch::GetNextTask [%d] from queue %s", task->fileBlockIdx, m_input.Path());
+
    return task;   
 }
+
+
 
 //______________________________________________________________________________
 void
