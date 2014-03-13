@@ -56,10 +56,10 @@ XrdOucCacheIO *Cache::Attach(XrdOucCacheIO *io, int Options)
    if (Factory::GetInstance().Decide(io))
    {
       clLog()->Info(XrdCl::AppMsg, "Cache::Attach() %s", io->Path());
-
-      XrdSysMutexHelper lock(&m_io_mutex);
-      m_attached++;
-
+      {
+         XrdSysMutexHelper lock(&m_io_mutex);
+         m_attached++;
+      }
       IO* cio;
       if (Factory::GetInstance().RefConfiguration().m_prefetchFileBlocks)
          cio = new IOFileBlock(*io, m_stats, *this);
@@ -86,8 +86,8 @@ void Cache::Detach(XrdOucCacheIO* io)
 {
    clLog()->Info(XrdCl::AppMsg, "Cache::Detach() %s", io->Path());
    {
-   XrdSysMutexHelper lock(&m_io_mutex);
-   m_attached--;
+      XrdSysMutexHelper lock(&m_io_mutex);
+      m_attached--;
    }
    clLog()->Debug(XrdCl::AppMsg, "Cache::Detach(), deleting IO object. Attach count = %d %s", m_attached, io->Path());
 

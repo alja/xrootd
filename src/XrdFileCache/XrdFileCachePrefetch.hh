@@ -120,8 +120,8 @@ namespace XrdFileCache
          bool    ReadFromTask(int bIdx, char* buff, long long off, size_t size);
          void    DoTask(Task* task);
 
-          bool IsTaskQueueEmpty();
-         Task* GetTaskForFirstUndownloadedBlock();
+
+         Task* CreateTaskForFirstUndownloadedBlock();
 
          RAM             m_ram;            //!< in memory cache
 
@@ -143,7 +143,7 @@ namespace XrdFileCache
          XrdSysMutex      m_downloadStatusMutex; //!< mutex locking access to m_cfi object
 
          std::deque<Task*> m_tasks_queue; //!< download queue
-         XrdSysCondVar    m_queueMutex;
+         XrdSysCondVar    m_queueCond;
 
          Stats            m_stats;      //!< cache statistics, used in IO detach
    };
