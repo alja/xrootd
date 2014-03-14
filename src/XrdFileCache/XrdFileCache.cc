@@ -136,6 +136,28 @@ Cache::AddWriteTask(Prefetch* p, int ri, int fi, size_t s)
 }
 
 //______________________________________________________________________________
+void Cache::RemoveWriteQEntriesFor(Prefetch *p)
+{
+   s_writeQ.mutex.Lock();
+   std::list<WriteTask>::iterator i = s_writeQ.queue.begin();
+   while (i != s_writeQ.queue.end())
+   {
+      if (i->prefetch == p)
+      {
+         std::list<WriteTask>::iterator j = i++;
+         j->prefetch->FreeRamBlock(i->ramBlockIdx);
+         s_writeQ.queue.erase(j);
+         --s_writeQ.size;
+      }
+      else
+      {
+         ++i;
+      }
+   }
+   s_writeQ.mutex.UnLock();
+}
+
+//______________________________________________________________________________
 void  
 Cache::ProcessWriteTasks()
 {
@@ -152,6 +174,6 @@ Cache::ProcessWriteTasks()
       s_writeQ.mutex.UnLock();
 
       t.prefetch->WriteBlockToDisk(t.ramBlockIdx, t.fileBlockIdx, t.size); // AMT check in lock all the time is really necessary
-
+      t.prefetch->FreeRamBlock(t.ramBlockIdx);
    }
 }

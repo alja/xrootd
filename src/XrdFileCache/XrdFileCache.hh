@@ -65,12 +65,15 @@ namespace XrdFileCache
          { return NULL; }
 
          // for disk performance allow only one 1M(default) read at the time
-      static void AddWriteTask(Prefetch* p, int ramBlockidx, int fileBlockIdx, size_t size);
+         static void AddWriteTask(Prefetch* p, int ramBlockidx, int fileBlockIdx, size_t size);
 
-        static  bool HaveFreeWritingSlots();
+         static bool HaveFreeWritingSlots();
 
-         void ProcessWriteTasks();
-         struct WriteTask {
+         static void RemoveWriteQEntriesFor(Prefetch *p);
+         static void ProcessWriteTasks();
+
+         struct WriteTask
+         {
             Prefetch* prefetch;
             int ramBlockIdx;
             int fileBlockIdx;
@@ -78,14 +81,15 @@ namespace XrdFileCache
             WriteTask(Prefetch* p, int ri, int fi, size_t s):prefetch(p), ramBlockIdx(ri), fileBlockIdx(fi), size(s){}
          };
 
-      struct WriteQ {
-         WriteQ(): mutex(0), size(0) {}
-         XrdSysCondVar         mutex;
-         size_t                size;
-         std::list<WriteTask>  queue;
-      };
+         struct WriteQ
+         {
+            WriteQ() : mutex(0), size(0) {}
+            XrdSysCondVar         mutex;
+            size_t                size;
+            std::list<WriteTask>  queue;
+         };
 
-      static WriteQ s_writeQ;
+         static WriteQ s_writeQ;
 
       private:
          void Detach(XrdOucCacheIO *);
@@ -96,8 +100,6 @@ namespace XrdFileCache
          XrdSysMutex        m_io_mutex; //!< central lock for this class
          unsigned int       m_attached; //!< number of attached IO objects
          XrdOucCacheStats  &m_stats;    //!< global cache usage statistics
-
-      
          
    };
 

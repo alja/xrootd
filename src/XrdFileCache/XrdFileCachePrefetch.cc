@@ -80,10 +80,15 @@ Prefetch::~Prefetch()
    if (m_started == false) return;
    m_stopping = true;
    m_stateCond.UnLock();
-   
+
+   m_queueCond.Lock();
+   m_queueCond.Signal();
+   m_queueCond.UnLock();
+
+   Cache::RemoveWriteQEntriesFor(this);
+
    while (true)
    {
-      
       m_stateCond.Lock();
       bool isStopped = m_stopped;
       m_stateCond.UnLock();
@@ -320,7 +325,7 @@ Prefetch::GetNextTask()
    clLog()->Dump(XrdCl::AppMsg, "Prefetch::GetNextTask begin ");
 
    while (true)
-   {     
+   {
       m_stateCond.Lock();
       bool doExit = m_stopping;
       m_stateCond.UnLock();
@@ -337,13 +342,18 @@ Prefetch::GetNextTask()
       // returns true on ETIMEDOUT
       if ( ! m_queueCond.WaitMS(100))
       {
-         assert( ! m_tasks_queue.empty());
-
-         // Exiting with queueMutex held !!!
-         break;
+         // Can be empty as result of a signal from destructor
+         if( ! m_tasks_queue.empty())
+            // Exiting with queueMutex held !!!
+            break;
       }
 
       m_queueCond.UnLock(); 
+
+      m_stateCond.Lock();
+      doExit = m_stopping;
+      m_stateCond.UnLock();
+      if (doExit) return 0;
 
       Task* t = CreateTaskForFirstUndownloadedBlock();
       clLog()->Dump(XrdCl::AppMsg, "Prefetch::GetNextTask from undownloaded %p %s", t,  m_input.Path());
@@ -464,7 +474,11 @@ Prefetch::WriteBlockToDisk(int ramIdx, int fileIdx, size_t size)
    m_downloadStatusMutex.Lock();
    m_cfi.SetBit(fileIdx);
    m_downloadStatusMutex.UnLock();
- 
+}
+
+//______________________________________________________________________________
+void Prefetch::FreeRamBlock(int ramIdx)
+{
    // mark ram block available
    m_ram.m_writeMutex.Lock();
    m_ram.m_blockStates[ramIdx] = 0;
