@@ -87,15 +87,18 @@ public:
         ReadyToRead  = 0x01,  //!< New data has arrived
         ReadTimeOut  = 0x02,  //!< Read timeout
         ReadyToWrite = 0x04,  //!< Writing won't block
-        WriteTimeOut = 0x08   //!< Write timeout
+        WriteTimeOut = 0x08,  //!< Write timeout
+        ValidEvents  = 0x0f   //!< Mask to test for valid events
       };
 
 //-----------------------------------------------------------------------------
 //! Handle event notification. A method must be supplied. The enable/disable
 //! status of the channel is not modified. To change the status, use the
 //! channel's Enable() and Disable() method prior to returning. After return,
-//! the current channel's status is used to determine how it will behave. The
-//! channel may not be deleted by the callback function! Event loop callbacks
+//! the current channel's status is used to determine how it will behave. If
+//! the event is a timeout, the timeout becomes infinite for that event unless
+//! Enable() is called for the event. This is to prevent timeout loops on
+//! channels that remain enabled even after a timeout. Event loop callbacks
 //! define a hazardous programming model. If you do not have a well defined
 //! threading model, you should restrict yourself to dealing only with the
 //! passed channel object in the callback so as to avoid deadlocks.
@@ -124,7 +127,10 @@ virtual bool Event(Channel *chP, void *cbArg, int evFlags) = 0;
 //! @param  eTxt    descriptive name of the operation encountering the error.
 //-----------------------------------------------------------------------------
 
-virtual void Fatal(Channel *chP, void *cbArg, int eNum, const char *eTxt) {};
+virtual void Fatal(Channel *chP, void *cbArg, int eNum, const char *eTxt)
+{
+  (void)chP; (void)cbArg; (void)eNum; (void)eTxt;
+};
 
 //-----------------------------------------------------------------------------
 //! Handle poller stop notification. This method is called only when the poller
@@ -136,7 +142,7 @@ virtual void Fatal(Channel *chP, void *cbArg, int eNum, const char *eTxt) {};
 //! @param  cbArg   the callback argument specified for the channel.
 //-----------------------------------------------------------------------------
 
-virtual void Stop(Channel *chP, void *cbArg) {}
+virtual void Stop(Channel *chP, void *cbArg) { (void)chP; (void)cbArg;}
 
 //-----------------------------------------------------------------------------
 //! Constructor
@@ -374,6 +380,11 @@ public:
 //! @param  eNum   Place where errno is placed upon failure.
 //! @param  eTxt   Place where a pointer to the description of the failing
 //!                operation is to be set. If null, no description is returned.
+//! @param  crOpts Poller options (see static const optxxx):
+//!                optTOM   - Timeout resumption after a timeout event must be
+//!                           manually reenabled. By default, event timeouts are
+//!                           automatically renabled after successful callbacks.
+//!
 //! @return !0     Poller successfully created and started.
 //!                eNum contains zero.
 //!                eTxt if not null contains a null string.
@@ -383,7 +394,9 @@ public:
 //!                eTxt if not null contains the failing operation.
 //-----------------------------------------------------------------------------
 
-static Poller     *Create(int &eNum, const char **eTxt=0);
+enum   CreateOpts  {optTOM};
+
+static Poller     *Create(int &eNum, const char **eTxt=0, int crOpts=0);
 
 //-----------------------------------------------------------------------------
 //! Stop a poller object. Active callbacks are completed. Pending callbacks are
@@ -428,7 +441,7 @@ inline  void  LockChannel(Channel *cP) {cP->chMutex.Lock();}
         int   Poll2Enum(short events);
         int   SendCmd(PipeData &cmd);
         void  SetPollEnt(Channel *cP, int ptEnt);
-        bool  TmoAdd(Channel *cP);
+        bool  TmoAdd(Channel *cP, int tmoSet);
         void  TmoDel(Channel *cP);
         int   TmoGet();
 inline  void  UnLockChannel(Channel *cP) {cP->chMutex.UnLock();}
@@ -492,6 +505,7 @@ struct          PipeData {char req; char evt; short ent; int fd;
 PipeData        reqBuff;    // Buffer used by poller thread to recv data
 char           *pipeBuff;   // Read resumption point in buffer
 int             pipeBlen;   // Number of outstanding bytes
+char            tmoMask;    // Timeout mask
 bool            wakePend;   // Wakeup is effectively pending (don't send)
 bool            chDead;     // True if channel deleted by callback
 

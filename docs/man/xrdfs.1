@@ -6,8 +6,8 @@ xrdfs - xrootd file and directory meta-data utility
 
 \fBxrdfs\fR \fIhost[:port]\fR \fI[command [args]]\fR
 
-\fBcommand\fR: help, chmod, locate, mkdir, mv, stat, statvfs, query, rm ,rmdir,
-         truncate
+\fBcommand\fR: help, chmod, ls, locate, mkdir, mv, stat, statvfs, query, rm, rmdir,
+           truncate, prepare, cat, tail
 .fi
 .br
 .ad l
@@ -43,6 +43,8 @@ Get the locations of the path.
 \fI-n\fR make the server return the response immediately even though it may be incomplete
 .br
 \fI-d\fR do a recursive, deep locate in order to find data servers
+.br
+\fI-m\fR prefer host names to IP addresses
 
 .RE
 \fBmkdir\fR \fI[-p] [-m<user><group><other>] <dirname>\fR
@@ -94,8 +96,28 @@ Obtain server information. Query codes:
 .br
 \fIspace\fR          \fB<space>\fR  Logical space stats
 .br
-\fIstats\fR          \fB<what>\fR   Server stats
+\fIstats\fR          \fB<what>\fR   Server stats; <what> is a list of letters
+indicating information to be returned:
+.RS 5
+a - all statistics
 .br
+p - protocol statistics
+.br
+b - buffer usage statistics
+.br
+s - scheduling statistics
+.br
+d - device polling statistics
+.br
+u - usage statistics
+.br
+i - server identification
+.br
+z - synchronized statistics
+.br
+l - connection statistics
+.br
+.RE
 \fIxattr\fR          \fB<path>\fR   Extended attributes
 
 .RE
@@ -127,6 +149,22 @@ Prepare one or more files for access.
 \fI-w\fR whe files will be accessed for modification
 .br
 \fI-p\fR priority of the request, 0 (lowest) - 3 (highest)
+
+.RE
+\fBcat\fR \fI[-o localfile]\fR \fIfile\fR
+.RS 3
+Print contents of a file to stdout
+.br
+\fI-o\fR print to the specified local file
+
+.RE
+\fBtail\fR \fI[-c bytes] [-f]\fR \fIfile\fR
+.RS 3
+Output last part of files to stdout.
+.br
+\fI-c\fR num_bytes out last num_bytes
+.br
+\fI-f\fR           output appended data as file grows
 
 .SH NOTES
 For the list of available environment variables please refere to xrdcopy(1)

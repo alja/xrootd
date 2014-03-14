@@ -1,8 +1,8 @@
 /******************************************************************************/
 /*                                                                            */
-/*               X r d S y s I O E v e n t s P o l l E . i c c                */
+/*              X r d S y s I O E v e n t s P o l l K Q . i c c               */
 /*                                                                            */
-/* (c) 2012 by the Board of Trustees of the Leland Stanford, Jr., University  */
+/* (c) 2014 by the Board of Trustees of the Leland Stanford, Jr., University  */
 /*                            All Rights Reserved                             */
 /*   Produced by Andrew Hanushevsky for Stanford University under contract    */
 /*              DE-AC02-76-SFO0515 with the Department of Energy              */
@@ -33,7 +33,8 @@
 #endif
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/epoll.h>
+#include <sys/event.h>
+#include <sys/time.h>
 
 using namespace std;
   
@@ -45,18 +46,19 @@ namespace XrdSys
 {
 namespace IOEvents
 {
-class PollE : public Poller
+class PollKQ : public Poller
 {
 public:
 
 static int  AllocMem(void **memP, int slots);
 
-            PollE(struct epoll_event *ptab, int numfd, int pfd, int pFD[2])
-                    : Poller(pFD[0], pFD[1]), pollTab(ptab), cbNow(0),
-                      pollDfd(pfd), pollMax(numfd), pollNum(1), numPoll(0),
-                      cbCurr(0)
-                 {}
-           ~PollE() {Stop();}
+            PollKQ(struct kevent *ptab, int numfd, int pfd, int pFD[2])
+                  : Poller(pFD[0], pFD[1]), pollTab(ptab), cbNext(0),
+                    pollDfd(pfd), pollMax(numfd), pollNum(1), numPoll(0)
+                  {EV_SET(&armPipe, reqFD, EVFILT_READ,
+                          EV_ADD|EV_CLEAR|EV_ENABLE, 0, 0, 0);
+                  }
+           ~PollKQ() {Stop();}
 
 protected:
 
@@ -72,19 +74,24 @@ protected:
 
 private:
        int   AllocPT(int slots);
-       void  Dispatch(Channel *cP, uint32_t pollEv);
-       bool  Process(int curr);
+       void  Dispatch(Channel *cP, int i);
+       bool  Process(int next);
 
-struct epoll_event *pollTab;
-       Channel     *cbNow;
+struct kevent      *pollTab;
+struct kevent       armPipe;
+       int          cbNext;
        int          pollDfd;
        int          pollMax;
        int          pollNum;
        int          numPoll;
-       int          cbCurr;
 static void        *deadChP;
+
+static const int    rEnabled = 1;
+static const int    rFilterX = 2;
+static const int    wEnabled = 4;
+static const int    wFilterX = 8;
 };
-       void        *PollE::deadChP = 0;
+       void        *PollKQ::deadChP = 0;
 };
 };
   
@@ -102,42 +109,38 @@ XrdSys::IOEvents::Poller::newPoller(int          pipeFD[2],
 
 {
    static const int allocFD = 1024;
-   struct epoll_event *pp, myEvent = {(EPOLLIN | EPOLLPRI), {0}};
+   struct kevent *pp, chlist;
    int pfd;
 
-// Open the /dev/poll driver
+// Open the kqueue
 //
-#ifndef EPOLL_CLOEXEC
-   if ((pfd = epoll_create(allocFD)) >= 0) fcntl(pfd, F_SETFD, FD_CLOEXEC);
-      else
-#else
-   if ((pfd = epoll_create1(EPOLL_CLOEXEC)) < 0)
-#endif
+   if ((pfd = kqueue()) < 0)
       {eNum = errno;
-       if (eTxt) *eTxt = "creating epoll device";
+       if (eTxt) *eTxt = "creating kqueue";
        return 0;
       }
 
 // Add the request side of the pipe fd to the poll set (always fd[0])
 //
-   if (epoll_ctl(pfd, EPOLL_CTL_ADD, pipeFD[0], &myEvent))
+   EV_SET(&chlist,pipeFD[0],EVFILT_READ,EV_ADD|EV_ONESHOT|EV_ENABLE,0,0,0);
+   if (kevent(pfd, &chlist, 1, 0, 0, 0) < 0)
       { eNum = errno;
        *eTxt = "adding communication pipe";
        return 0;
       }
 
-// Allocate the poll table
+// Allocate the event table
 //
-   if ((eNum = XrdSys::IOEvents::PollE::AllocMem((void **)&pp, allocFD)))
+   if ((eNum = XrdSys::IOEvents::PollKQ::AllocMem((void **)&pp, allocFD)))
       {eNum = ENOMEM;
-       if (eTxt) *eTxt = "creating epoll table";
+       if (eTxt) *eTxt = "creating kqueue table";
        close(pfd);
        return 0;
       }
 
 // Create new poll object
 //
-   return (Poller *)new PollE(pp, allocFD, pfd, pipeFD);
+   return (Poller *)new PollKQ(pp, allocFD, pfd, pipeFD);
 }
   
 /******************************************************************************/
@@ -147,13 +150,13 @@ XrdSys::IOEvents::Poller::newPoller(int          pipeFD[2],
 /*                              A l l o c M e m                               */
 /******************************************************************************/
 
-int XrdSys::IOEvents::PollE::AllocMem(void **memP, int slots)
+int XrdSys::IOEvents::PollKQ::AllocMem(void **memP, int slots)
 {
    int rc, bytes, alignment, pagsz = getpagesize();
 
 // Calculate the size of the poll table and allocate it
 //
-   bytes     = slots * sizeof(struct epoll_event);
+   bytes     = slots * sizeof(struct kevent);
    alignment = (bytes < pagsz ? 1024 : pagsz);
    if (!(rc = posix_memalign(memP, alignment, bytes))) memset(*memP, 0, bytes);
    return rc;
@@ -163,9 +166,9 @@ int XrdSys::IOEvents::PollE::AllocMem(void **memP, int slots)
 /* Private:                      A l l o c P T                                */
 /******************************************************************************/
 
-int XrdSys::IOEvents::PollE::AllocPT(int slots)
+int XrdSys::IOEvents::PollKQ::AllocPT(int slots)
 {
-   struct epoll_event *pp;
+   struct kevent *pp;
 
 // Calclulate new slots
 //
@@ -189,35 +192,39 @@ int XrdSys::IOEvents::PollE::AllocPT(int slots)
 /* Protected:                      B e g i n                                  */
 /******************************************************************************/
   
-void XrdSys::IOEvents::PollE::Begin(XrdSysSemaphore *syncsem,
-                                    int             &retcode,
-                                    const char     **eTxt)
+void XrdSys::IOEvents::PollKQ::Begin(XrdSysSemaphore *syncsem,
+                                     int             &retcode,
+                                     const char     **eTxt)
 {
-   int numpolled;
+   struct timespec *tmP, tmOut;
    Channel *cP;
+   long long tmVal;
+   int numpolled;
 
 // Indicate to the starting thread that all went well
 //
    retcode = 0;
    *eTxt   = 0;
    syncsem->Post();
+   tmOut.tv_nsec = 0;
 
 // Now start dispatching channels that are ready. We use the wakePend flag to
 // keep the chatter down when we actually wakeup.
 //
-   do {do {numpolled = epoll_wait(pollDfd, pollTab, pollMax, TmoGet());}
+   do {if ((tmVal = TmoGet()) < 0) tmP = 0;
+          else {tmOut.tv_sec  = tmVal / 1000; tmP = &tmOut;}
+       do {numpolled = kevent(pollDfd, 0, 0, pollTab, pollMax, tmP);}
           while (numpolled < 0 && errno == EINTR);
        wakePend = true; numPoll = numpolled;
             if (numpolled == 0) CbkTMO();
        else if (numpolled <  0)
                {int rc = errno;
-                cerr <<"EPoll: " <<strerror(rc) <<" polling for events" <<endl;
+                cerr <<"KQ: " <<strerror(rc) <<" polling for events" <<endl;
                 abort();
                }
        else for (int i = 0; i < numpolled; i++)
-                {if ((cP = (Channel *)pollTab[i].data.ptr))
-                    {cbCurr = i; Dispatch(cP, pollTab[i].events);}
-                    else if (!Process(i)) return;
+                {if ((cP = (Channel *)pollTab[i].udata)) Dispatch(cP, i);
+                    else if (!Process(i+1)) return;
                 }
 
        if (pollMax < pollNum) AllocPT(pollNum);
@@ -229,14 +236,11 @@ void XrdSys::IOEvents::PollE::Begin(XrdSysSemaphore *syncsem,
 /* Private:                     D i s p a t c h                               */
 /******************************************************************************/
   
-void XrdSys::IOEvents::PollE::Dispatch(XrdSys::IOEvents::Channel *cP,
-                                       uint32_t                   pollEv)
+void XrdSys::IOEvents::PollKQ::Dispatch(XrdSys::IOEvents::Channel *cP, int i)
 {
-   static const uint32_t pollOK = EPOLLIN | EPOLLPRI | EPOLLOUT;
-   static const uint32_t pollRD = EPOLLIN | EPOLLPRI;
-   static const uint32_t pollWR = EPOLLOUT;
+   static const uint16_t pollER = EV_EOF | EV_ERROR;
    const char *eTxt;
-   int eNum, events = 0;
+   int eNum, events;
    bool isLocked = false;
 
 // Make sure this not a dispatch to a dead channel (rare but true)
@@ -245,36 +249,46 @@ void XrdSys::IOEvents::PollE::Dispatch(XrdSys::IOEvents::Channel *cP,
 
 // Translate the event to something reasonable
 //
-   if (pollEv & pollOK)
-      {if (pollEv & pollRD) events |= CallBack::ReadyToRead;
-       if (pollEv & pollWR) events |= CallBack::ReadyToWrite;
+   if (!(pollTab[i].flags & pollER))
+      {if (pollTab[i].filter == EVFILT_READ) events = CallBack::ReadyToRead;
+          else                               events = CallBack::ReadyToWrite;
        eNum = 0; eTxt = 0;
       } else {
-            if (pollEv & EPOLLHUP) eNum = ECONNRESET;
-       else if (pollEv & EPOLLERR) eNum = EPIPE;
-       else                        eNum = EIO;
-       eTxt = "polling";
+       if (pollTab[i].fflags) eNum = pollTab[i].fflags;
+          else                eNum = ECONNRESET;
+       eTxt = "polling"; events = 0;
       }
 
 // Execute the callback
 //
-   cbNow = cP;
+   cbNext = i+1;
    if (!CbkXeq(cP, events, eNum, eTxt)) Exclude(cP, isLocked, 0);
-   cbNow = 0;
+   cbNext = 0;
 }
 
 /******************************************************************************/
 /* Protected:                    E x c l u d e                                */
 /******************************************************************************/
   
-void XrdSys::IOEvents::PollE::Exclude(XrdSys::IOEvents::Channel *cP,
+void XrdSys::IOEvents::PollKQ::Exclude(XrdSys::IOEvents::Channel *cP,
                                       bool &isLocked,  bool dover)
 {
+   struct kevent chlist[2];
+   int i = 0, theFD = cP->GetFD(), kqStatus = GetPollEnt(cP);
+
+// Setup the removal elements.
+// may have been closed prior to this call (though this shouldn't happen).
+//
+   if (kqStatus & rFilterX)
+      {EV_SET(&chlist[i], theFD, EVFILT_READ,  EV_DELETE,  0, 0, cP);}
+   if (kqStatus & wFilterX)
+      {EV_SET(&chlist[i], theFD, EVFILT_WRITE, EV_DELETE,  0, 0, cP);}
 
 // Remove this channel from the poll set. We ignore errors as the descriptor
 // may have been closed prior to this call (though this shouldn't happen).
 //
-   epoll_ctl(pollDfd, EPOLL_CTL_DEL, cP->GetFD(), 0);
+   if (i) kevent(pollDfd, chlist, i, 0, 0, 0);
+   SetPollEnt(cP, 0);
    pollNum--;
 
 // If we need to verify this action, sync with the poller thread (note that the
@@ -292,13 +306,13 @@ void XrdSys::IOEvents::PollE::Exclude(XrdSys::IOEvents::Channel *cP,
            UnLockChannel(cP);
           }
        cmdbuff.req = PipeData::RmFD;
-       cmdbuff.fd  = cP->GetFD();
+       cmdbuff.fd  = theFD;
        SendCmd(cmdbuff);
       } else {
-       if (cbNow && cbNow != cP)
-          for (int i = cbCurr+1; i < numPoll; i++)
-              {if (cP == (Channel *)pollTab[i].data.ptr)
-                  pollTab[i].data.ptr = &deadChP;
+       if (cbNext)
+          for (int i = cbNext; i < numPoll; i++)
+              {if (cP == (Channel *)pollTab[i].udata)
+                  pollTab[i].udata = &deadChP;
               }
       }
 }
@@ -307,24 +321,16 @@ void XrdSys::IOEvents::PollE::Exclude(XrdSys::IOEvents::Channel *cP,
 /* Protected:                    I n c l u d e                                */
 /******************************************************************************/
   
-bool XrdSys::IOEvents::PollE::Include(XrdSys::IOEvents::Channel *cP,
+bool XrdSys::IOEvents::PollKQ::Include(XrdSys::IOEvents::Channel *cP,
                                       int                       &eNum,
                                       const char               **eTxt,
                                       bool                      &isLocked)
 {
-   struct epoll_event myEvent = {0, {(void *)cP}};
-   int events = cP->GetEvents();
 
-// Establish new event mask
+// We simply call modify as this will add events to the kqueue as needed
 //
-   if (events & Channel:: readEvents)  myEvent.events  = EPOLLIN  | EPOLLPRI;
-   if (events & Channel::writeEvents)  myEvent.events |= EPOLLOUT;
-
-// Add this fd to the poll set
-//
-   if (epoll_ctl(pollDfd, EPOLL_CTL_ADD, cP->GetFD(), &myEvent))
-      {eNum = errno;
-       if (eTxt) *eTxt = "adding channel";
+   if (!Modify(cP, eNum, eTxt, isLocked))
+      {if (eTxt) *eTxt = "adding channel";
        return false;
       }
 
@@ -339,26 +345,57 @@ bool XrdSys::IOEvents::PollE::Include(XrdSys::IOEvents::Channel *cP,
 /* Protected:                     M o d i f y                                 */
 /******************************************************************************/
 
-bool XrdSys::IOEvents::PollE::Modify(XrdSys::IOEvents::Channel *cP,
+bool XrdSys::IOEvents::PollKQ::Modify(XrdSys::IOEvents::Channel *cP,
                                      int                       &eNum,
                                      const char               **eTxt,
                                      bool                      &isLocked)
 {
-   struct epoll_event myEvents = {0, {(void *)cP}};
-   int events = cP->GetEvents();
+   struct kevent chlist[2];
+   int i = 0;
+   int events   = cP->GetEvents(), theFD = cP->GetFD();
+   int kqStatus = GetPollEnt(cP);
 
-// Establish new event mask
+// Establish new read  event mask
 //
-   if (events & Channel:: readEvents)  myEvents.events |= EPOLLIN  | EPOLLPRI;
-   if (events & Channel::writeEvents)  myEvents.events |= EPOLLOUT;
+   if (events & Channel:: readEvents)
+      {if (!(kqStatus & rEnabled))
+          {EV_SET(&chlist[i], theFD, EVFILT_READ,  EV_ADD|EV_ENABLE,  0, 0, cP);
+           kqStatus |=  rEnabled | rFilterX;
+           i++;
+          }
+      } else {
+       if (kqStatus & rEnabled)
+          {EV_SET(&chlist[i], theFD, EVFILT_READ,         EV_DISABLE, 0, 0, cP);
+           kqStatus &= ~rEnabled;
+           i++;
+          }
+      }
 
-// Modify this fd. Unlike solaris, epoll_ctl() does not block when the pollfd
-// is being waited upon by another thread.
+// Establish new write event mask
 //
-   if (epoll_ctl(pollDfd, EPOLL_CTL_MOD, cP->GetFD(), &myEvents))
-      {eNum = errno;
-       if (eTxt) *eTxt = "modifying poll events";
-       return false;
+   if (events & Channel::writeEvents)
+      {if (!(kqStatus & wEnabled))
+          {EV_SET(&chlist[i], theFD, EVFILT_WRITE, EV_ADD|EV_ENABLE,  0, 0, cP);
+           kqStatus |=  wEnabled | wFilterX;
+           i++;
+          }
+      } else {
+       if (kqStatus & wEnabled)
+          {EV_SET(&chlist[i], theFD, EVFILT_WRITE,        EV_DISABLE, 0, 0, cP);
+           kqStatus &= ~wEnabled;
+           i++;
+          }
+      }
+
+// Modify this fd if anything changed
+//
+   if (i)
+      {if (kevent(pollDfd, chlist, i, 0, 0, 0) < 0)
+          {eNum = errno;
+           if (eTxt) *eTxt = "modifying poll events";
+           return false;
+          }
+       SetPollEnt(cP, kqStatus);
       }
   
 // All done
@@ -370,17 +407,19 @@ bool XrdSys::IOEvents::PollE::Modify(XrdSys::IOEvents::Channel *cP,
 /* Private:                      P r o c e s s                                */
 /******************************************************************************/
 
-bool XrdSys::IOEvents::PollE::Process(int curr)
+bool XrdSys::IOEvents::PollKQ::Process(int next)
 {
+
 // Get the pipe request and check out actions of interest.
 //
   if (GetRequest())
      {     if (reqBuff.req == PipeData::RmFD)
               {Channel *cP;
-               for (int i = curr+1; i < numPoll; i++)
-                   {if ((cP  = (Channel *)pollTab[i].data.ptr)
+               for (int i = next; i < numPoll; i++)
+                   {if ((cP  = (Channel *)pollTab[i].udata)
                     &&   cP != (XrdSys::IOEvents::Channel *)&deadChP
-                    &&  reqBuff.fd == cP->GetFD()) pollTab[i].data.ptr=&deadChP;
+                    &&  reqBuff.fd == (int)pollTab[i].ident)
+                        pollTab[i].udata = &deadChP;
                    }
                reqBuff.theSem->Post();
               }
@@ -389,7 +428,11 @@ bool XrdSys::IOEvents::PollE::Process(int curr)
                                              }
      }
 
-// Return true
+// Renable the pipe as kqueue essentially disables it once we do a read-out
+//
+   kevent(pollDfd, &armPipe, 1, 0, 0, 0);
+
+// All done
 //
    return true;
 }
@@ -398,7 +441,7 @@ bool XrdSys::IOEvents::PollE::Process(int curr)
 /* Protected:                   S h u t d o w n                               */
 /******************************************************************************/
 
-void XrdSys::IOEvents::PollE::Shutdown()
+void XrdSys::IOEvents::PollKQ::Shutdown()
 {
    static XrdSysMutex shutMutex;
 
@@ -410,7 +453,7 @@ void XrdSys::IOEvents::PollE::Shutdown()
 //
    if (pollTab) {free(pollTab); pollTab = 0;}
 
-// Close the epoll file descriptor
+// Close the kqueue file descriptor
 //
    if (pollDfd >= 0) {close(pollDfd); pollDfd = -1;}
 

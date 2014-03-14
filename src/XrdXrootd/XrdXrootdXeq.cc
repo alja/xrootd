@@ -152,16 +152,10 @@ int XrdXrootdProtocol::do_Auth()
 // Now try to authenticate the client using the current protocol
 //
    if (!(rc = AuthProt->Authenticate(&cred, &parm, &eMsg)))
-      {const char *msg = (Status & XRD_ADMINUSER ? "IPv4 admin login as"
-                                                 : "IPv4 login as");
-       if (!(clientPV & XrdOucEI::uIPv4)) msg += 5;
-       rc = Response.Send(); Status &= ~XRD_NEED_AUTH; SI->Bump(SI->LoginAU);
+      {rc = Response.Send(); Status &= ~XRD_NEED_AUTH; SI->Bump(SI->LoginAU);
        Client = &AuthProt->Entity; numReads = 0; strcpy(Entity.prot, "host");
        if (Monitor.Logins() && Monitor.Auths()) MonAuth();
-       if (Client->name) 
-          eDest.Log(SYS_LOG_01, "Xeq", Link->ID, msg, Client->name);
-          else
-          eDest.Log(SYS_LOG_01, "Xeq", Link->ID, msg, "nobody");
+       logLogin(true);
        return rc;
       }
 
@@ -480,7 +474,7 @@ int XrdXrootdProtocol::do_Dirlist()
 
 // Check if we are digging for data
 //
-   doDig = (digFS && SFS_LCLPATH(argp->buff));
+   doDig = (digFS && SFS_LCLROOT(argp->buff));
 
 // Check for static routing
 //
@@ -584,10 +578,8 @@ int XrdXrootdProtocol::do_DirStat(XrdSfsDirectory *dp, char *pbuff,
 // client to issue individual stat requests in that case.
 //
    memset(&Stat, 0, sizeof(Stat));
-   strcpy(ebuff, ".\n");
-   buff = ebuff+2; bleft = sizeof(ebuff)-2;
-   dlen = StatGen(Stat, buff);
-   bleft -= (dlen+1); buff += dlen; *buff = '\n'; buff++;
+   strcpy(ebuff, ".\n0 0 0 0\n");
+   buff = ebuff+10; bleft = sizeof(ebuff)-10;
 
 // Start retreiving each entry and place in a local buffer with a trailing new
 // line character (the last entry will have a null byte). If we cannot fit a
@@ -609,7 +601,7 @@ int XrdXrootdProtocol::do_DirStat(XrdSfsDirectory *dp, char *pbuff,
                        return fsError(rc, XROOTD_MON_STAT, myError, argp->buff);
                    }
                 dlen = StatGen(Stat, buff);
-                bleft -= (dlen+1); buff += dlen; *buff = '\n'; buff++;
+                bleft -= dlen; buff += (dlen-1); *buff = '\n'; buff++;
                }
             dname = 0;
            }
@@ -735,10 +727,10 @@ int XrdXrootdProtocol::do_Locate()
 // Check if this is a non-specific locate
 //
         if (*fn != '*'){Path = fn;
-                        doDig = (digFS && SFS_LCLPATH(Path));
+                        doDig = (digFS && SFS_LCLROOT(Path));
                        }
    else if (*(fn+1))   {Path = fn+1;
-                        doDig = (digFS && SFS_LCLPATH(Path));
+                        doDig = (digFS && SFS_LCLROOT(Path));
                        }
    else                {Path = 0; 
                         fn = XPList.Next()->Path();
@@ -880,7 +872,7 @@ int XrdXrootdProtocol::do_Login()
 // Allocate a monitoring object, if needed for this connection
 //
    if (Monitor.Ready())
-      {Monitor.Register(Link->ID, Link->Host());
+      {Monitor.Register(Link->ID, Link->Host(), "xrootd");
        if (Monitor.Logins() && (!Monitor.Auths() || !(Status & XRD_NEED_AUTH)))
           Monitor.Report(Monitor.Auths() ? "" : 0);
       }
@@ -891,11 +883,7 @@ int XrdXrootdProtocol::do_Login()
 
 // Document this login
 //
-   if (!(Status & XRD_NEED_AUTH))
-      eDest.Log(SYS_LOG_01, "Xeq", Link->ID,
-               (clientPV & XrdOucEI::uIPv4 ? "IPv4" : 0),
-               (Status   & XRD_ADMINUSER   ? "admin login" : "login"));
-
+   if (!(Status & XRD_NEED_AUTH)) logLogin();
    return rc;
 }
 
@@ -2301,7 +2289,7 @@ int XrdXrootdProtocol::do_Stat()
 
 // Check if we are handling a dig type path
 //
-   doDig = (digFS && SFS_LCLPATH(argp->buff));
+   doDig = (digFS && SFS_LCLROOT(argp->buff));
 
 // Check for static routing
 //
@@ -2842,6 +2830,33 @@ int XrdXrootdProtocol::getBuff(const int isRead, int Quantum)
 // Success
 //
    return 1;
+}
+
+/******************************************************************************/
+/* Private:                     l o g L o g i n                               */
+/******************************************************************************/
+  
+void XrdXrootdProtocol::logLogin(bool xauth)
+{
+   const char *uName;
+   char lBuff[512];
+
+// Determine client name
+//
+   if (xauth) uName = (Client->name ? Client->name : "nobody");
+      else    uName = 0;
+
+// Format the line
+//
+   sprintf(lBuff, "%s %s %slogin%s",
+                  (clientPV & XrdOucEI::uPrip ? "pvt"    : "pub"),
+                  (clientPV & XrdOucEI::uIPv4 ? "IPv4"   : "IPv6"),
+                  (Status   & XRD_ADMINUSER   ? "admin " : ""),
+                  (xauth                      ? " as"    : ""));
+
+// Document the login
+//
+   eDest.Log(SYS_LOG_01, "Xeq", Link->ID, lBuff, uName);
 }
 
 /******************************************************************************/
