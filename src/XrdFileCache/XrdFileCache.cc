@@ -50,6 +50,7 @@ Cache::Cache(XrdOucCacheStats & stats)
    pthread_t tid;
    XrdSysThread::Run(&tid, ProcessWriteTaskThread, (void*)this, 0, "XrdFileCache WriteTasks ");
 }
+//______________________________________________________________________________
 
 XrdOucCacheIO *Cache::Attach(XrdOucCacheIO *io, int Options)
 {
@@ -64,7 +65,7 @@ XrdOucCacheIO *Cache::Attach(XrdOucCacheIO *io, int Options)
       if (Factory::GetInstance().RefConfiguration().m_prefetchFileBlocks)
          cio = new IOFileBlock(*io, m_stats, *this);
       else
-         cio =  new IOEntireFile(*io, m_stats, *this);
+         cio = new IOEntireFile(*io, m_stats, *this);
 
       cio->StartPrefetch();
       return cio;
@@ -75,6 +76,8 @@ XrdOucCacheIO *Cache::Attach(XrdOucCacheIO *io, int Options)
    }
    return io;
 }
+//______________________________________________________________________________
+
 
 int Cache::isAttached()
 {
@@ -89,10 +92,11 @@ void Cache::Detach(XrdOucCacheIO* io)
       XrdSysMutexHelper lock(&m_io_mutex);
       m_attached--;
    }
-   clLog()->Debug(XrdCl::AppMsg, "Cache::Detach(), deleting IO object. Attach count = %d %s", m_attached, io->Path());
 
    delete io;
 }
+
+//______________________________________________________________________________
 
 
 bool Cache::getFilePathFromURL(const char* url, std::string &result) const

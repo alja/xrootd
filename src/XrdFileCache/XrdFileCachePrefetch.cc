@@ -95,7 +95,7 @@ Prefetch::~Prefetch()
 
       if (isStopped)
       {
-         clLog()->Debug(XrdCl::AppMsg, "Prefetch::~Prefetch sleep, waiting queues to empty begin");
+         clLog()->Debug(XrdCl::AppMsg, "Prefetch::~Prefetch sleep, waiting queues to empty begin %s", m_input.Path());
 
          bool writewait = false;
          m_ram.m_writeMutex.Lock();
@@ -355,10 +355,11 @@ Prefetch::GetNextTask()
       m_stateCond.UnLock();
       if (doExit) return 0;
 
+      /*
       Task* t = CreateTaskForFirstUndownloadedBlock();
       clLog()->Dump(XrdCl::AppMsg, "Prefetch::GetNextTask from undownloaded %p %s", t,  m_input.Path());
       if (t)  return t;
-         
+      */ 
       clLog()->Dump(XrdCl::AppMsg, "Prefetch::GetNextTask  no resources, reentering %s", m_input.Path());
    }
 
@@ -551,10 +552,15 @@ bool Prefetch::ReadFromTask(int iFileBlockIdx, char* iBuff, long long iOff, size
             return false;
          }
       }
-      clLog()->Debug(XrdCl::AppMsg, "Prefetch::ReadFromTask can't get free ram, not enough resources");
+      else {
+         clLog()->Debug(XrdCl::AppMsg, "Prefetch::ReadFromTask can't get free ram, not enough resources");
+         return false;
+      }
    }
-   clLog()->Debug(XrdCl::AppMsg, "Prefetch::ReadFromTask write queue full, not enough resources");
-   return false;
+   else {
+      clLog()->Debug(XrdCl::AppMsg, "Prefetch::ReadFromTask write queue full, not enough resources");
+      return false;
+   }
 }
 
 //______________________________________________________________________________
