@@ -65,7 +65,7 @@ namespace XrdFileCache
          Stats& GetStats() { return m_stats; }
 
       void    WriteBlockToDisk(int ramIdx, int fileIdx, size_t size);
-      void    FreeRamBlock(int ramIdx);
+      bool    FreeRamBlock(int ramIdx);
       protected:
          //! Read from disk, RAM, or client
          ssize_t Read(char * buff, off_t offset, size_t size);
@@ -91,11 +91,18 @@ namespace XrdFileCache
            ~Task() {}
          };
 
+      struct RAMBlock {
+         int fileBlockIdx;
+         int refCount;
+
+         RAMBlock():fileBlockIdx(-1), refCount(0) {}
+      };
+
          struct RAM
          {
             int         m_numBlocks;
             char*       m_buffer;
-            bool*       m_blockStates;// 1= 0ccuped, 0 = free states
+            RAMBlock*       m_blockStates;// 1= 0ccuped, 0 = free states
             XrdSysMutex m_writeMutex;
 
             RAM();
