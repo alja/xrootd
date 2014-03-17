@@ -84,7 +84,7 @@ Prefetch::~Prefetch()
    m_queueCond.Lock();
    m_queueCond.Signal();
    m_queueCond.UnLock();
-
+ 
    Cache::RemoveWriteQEntriesFor(this);
 
    while (true)
@@ -114,6 +114,9 @@ Prefetch::~Prefetch()
       }
       XrdSysTimer::Wait(100);
    }
+   clLog()->Debug(XrdCl::AppMsg, "Prefetch::~Prefetch finished with writing",m_input.Path() )
+
+
 
    // write statistics in *cinfo file
    AppendIOStatToFileInfo();
@@ -272,7 +275,6 @@ Prefetch::CreateTaskForFirstUndownloadedBlock()
     Task *task = new Task;
     Task &t = * task;
     t.fileBlockIdx = -1;
-    t.ramBlockIdx = -1;
     for (int i = 0; i < m_cfi.GetSizeInBits(); ++i)
     {
         if (m_cfi.TestBit(i) == false)
@@ -284,6 +286,7 @@ Prefetch::CreateTaskForFirstUndownloadedBlock()
     }
     m_downloadStatusMutex.UnLock();
 
+    t.ramBlockIdx = -1;
     if (t.fileBlockIdx >= 0 )
     {
         if (Cache::HaveFreeWritingSlots())
@@ -291,7 +294,12 @@ Prefetch::CreateTaskForFirstUndownloadedBlock()
             m_ram.m_writeMutex.Lock();
             for (int i =0 ; i < m_ram.m_numBlocks; ++i) 
             {
-                if (m_ram.m_blockStates[i].refCount == 0)
+                if (m_ram.m_blockStates[i].fileBlockIdx == t.fileBlockIdx ) {
+                   clLog()->Dump(XrdCl::AppMsg, "Prefetch::CreateTaskForFirstUndownloadedBlock in ram %d failed %s", t.fileBlockIdx, m_input.Path());
+                   break;
+                }
+
+                if (m_ram.m_blockStates[i].refCount == 0 && m_ram.m_blockStates[i].fileBlockIdx != t.fileBlockIdx )
                 {
                     t.ramBlockIdx = i;
                     m_ram.m_blockStates[i].refCount = 1;
@@ -311,10 +319,10 @@ Prefetch::CreateTaskForFirstUndownloadedBlock()
         else 
             t.size = m_cfi.GetBufferSize();
 
-        clLog()->Dump(XrdCl::AppMsg, "Prefetch::CreateTaskForFirstUndownloadedBlock success");
+        clLog()->Dump(XrdCl::AppMsg, "Prefetch::CreateTaskForFirstUndownloadedBlock success block %d %s ",  t.fileBlockIdx, m_input.Path());
         return task;
     }
-    clLog()->Dump(XrdCl::AppMsg, "Prefetch::CreateTask failed %s", m_input.Path());
+    clLog()->Dump(XrdCl::AppMsg, "Prefetch::CreateTaskForFirstUndownloadedBlock for block %d failed %s", t.fileBlockIdx, m_input.Path());
     delete task;
     return 0;
 }
@@ -356,12 +364,12 @@ Prefetch::GetNextTask()
       m_stateCond.UnLock();
       if (doExit) return 0;
 
-      /*
       Task* t = CreateTaskForFirstUndownloadedBlock();
       clLog()->Dump(XrdCl::AppMsg, "Prefetch::GetNextTask from undownloaded %p %s", t,  m_input.Path());
       if (t)  return t;
-      */ 
+
       clLog()->Dump(XrdCl::AppMsg, "Prefetch::GetNextTask  no resources, reentering %s", m_input.Path());
+
    }
 
    Task *task = m_tasks_queue.front();
@@ -489,7 +497,7 @@ bool Prefetch::FreeRamBlock(int ramIdx)
    {
       --m_ram.m_blockStates[ramIdx].refCount;
       if (m_ram.m_blockStates[ramIdx].refCount == 0) {
-         clLog()->Dump(XrdCl::AppMsg, "Prefetch::FreeRamBlock can be reaused %d %d",  m_ram.m_blockStates[ramIdx].fileBlockIdx, ramIdx);
+         //clLog()->Dump(XrdCl::AppMsg, "Prefetch::FreeRamBlock can be reaused %d %d",  m_ram.m_blockStates[ramIdx].fileBlockIdx, ramIdx);
          m_ram.m_blockStates[ramIdx].fileBlockIdx = -1;
          released = true;
       }
@@ -637,13 +645,13 @@ ssize_t Prefetch::ReadInBlocks(char *buff, off_t off, size_t size)
                break;
             }
          }
+         m_ram.m_writeMutex.UnLock();
          if (RamIdx >= 0) {
             clLog()->Dump(XrdCl::AppMsg, "Prefetch::ReadInBlocks  ram = %d file block = %d", RamIdx, blockIdx);
             char *rbuff = m_ram.m_buffer + RamIdx*m_cfi.GetBufferSize();
             memcpy(buff, rbuff, readBlockSize);
             retvalBlock = readBlockSize;
          }
-         m_ram.m_writeMutex.UnLock();
 
          if (RamIdx < 0) {
             if (ReadFromTask(blockIdx, buff, off, readBlockSize))
