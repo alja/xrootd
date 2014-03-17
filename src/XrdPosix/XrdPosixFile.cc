@@ -79,13 +79,6 @@ XrdPosixFile::XrdPosixFile(const char *path, XrdPosixCallBack *cbP, int Opts)
   
 XrdPosixFile::~XrdPosixFile()
 {
-// Detach the cache if it is attached
-//
-   if (XCio != this) XCio->Detach();
-
-// Close the remote connection
-//
-   if (clFile.IsOpen()) clFile.Close();
 
 // Free the path
 //
@@ -102,10 +95,16 @@ bool XrdPosixFile::Close(XrdCl::XRootDStatus &Status)
 // actual close and return the status. We should have already been removed
 // from the file table at this point and should be unlocked.
 //
-   if (clFile.IsOpen())
-      {Status = clFile.Close();
+
+// Detach the cache if it is attached
+//
+   if (XCio != this) XCio->Detach();
+
+   if (clFile.IsOpen()) {
+       Status = clFile.Close();
        return Status.IsOK();
-      }
+   }
+
    return true;
 }
   
