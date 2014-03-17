@@ -114,7 +114,7 @@ Prefetch::~Prefetch()
       }
       XrdSysTimer::Wait(100);
    }
-   clLog()->Debug(XrdCl::AppMsg, "Prefetch::~Prefetch finished with writing",m_input.Path() )
+   clLog()->Debug(XrdCl::AppMsg, "Prefetch::~Prefetch finished with writing %s",m_input.Path() );
 
 
 
