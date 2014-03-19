@@ -186,24 +186,28 @@ namespace
         pSendParams.hostList = hostList;
 
         //----------------------------------------------------------------------
+        // We have been sent out elsewhere, and we can handle it
+        //----------------------------------------------------------------------
+        if( !status->IsOK() && status->code == errRedirect )
+        {
+          std::string root = "root", xroot = "xroot";
+          std::string msg = status->GetErrorMessage();
+          if( !msg.compare( 0, root.size(), root ) ||
+              !msg.compare( 0, xroot.size(), xroot ) )
+          {
+            pStateHandler->OnStateRedirection( msg, pMessage, this,
+                                               pSendParams );
+            return;
+          }
+        }
+
+        //----------------------------------------------------------------------
         // Houston we have a problem...
         //----------------------------------------------------------------------
         if( !status->IsOK() )
         {
           statusPtr.release();
           pStateHandler->OnStateError( status, pMessage, this, pSendParams );
-          return;
-        }
-
-        //----------------------------------------------------------------------
-        // We have been sent out elsewhere
-        //----------------------------------------------------------------------
-        if( status->IsOK() && status->code == suXRDRedirect )
-        {
-          RedirectInfo *redirInfo = 0;
-          response->Get( redirInfo );
-          pStateHandler->OnStateRedirection( redirInfo, pMessage, this,
-                                             pSendParams );
           return;
         }
 
@@ -424,7 +428,10 @@ namespace XrdCl
     XRootDTransport::SetDescription( msg );
     msg->SetSessionId( pSessionId );
     CloseHandler *closeHandler = new CloseHandler( this, handler, msg );
-    MessageSendParams params; params.timeout = timeout;
+    MessageSendParams params;
+    params.timeout = timeout;
+    params.followRedirects = false;
+    params.stateful        = true;
     MessageUtils::ProcessSendParams( params );
 
     Status st = MessageUtils::SendMessage( *pDataServer, msg, closeHandler, params );
@@ -1058,7 +1065,7 @@ namespace XrdCl
   //----------------------------------------------------------------------------
   // Handle stateful redirect
   //----------------------------------------------------------------------------
-  void FileStateHandler::OnStateRedirection( RedirectInfo      *redirectInfo,
+  void FileStateHandler::OnStateRedirection( const std::string &redirectUrl,
                                              Message           *message,
                                              ResponseHandler   *userHandler,
                                              MessageSendParams &sendParams )
@@ -1073,9 +1080,7 @@ namespace XrdCl
     if( !pStateRedirect )
     {
       std::ostringstream o;
-      o << redirectInfo->host << ":" << redirectInfo->port << "//fakepath?";
-      o << redirectInfo->cgi;
-      pStateRedirect = new URL( o.str() );
+      pStateRedirect = new URL( redirectUrl );
       URL::ParamsMap params = pFileUrl->GetParams();
       MessageUtils::MergeCGI( params,
                               pStateRedirect->GetParams(),
@@ -1336,13 +1341,14 @@ namespace XrdCl
     Status st;
     if( pStateRedirect )
     {
-      st = ReOpenFileAtServer( *pStateRedirect, 300 );
+      SendClose( 0 );
+      st = ReOpenFileAtServer( *pStateRedirect, 0 );
       delete pStateRedirect; pStateRedirect = 0;
     }
     else if( IsReadOnly() && pLoadBalancer )
-      st = ReOpenFileAtServer( *pLoadBalancer, 300 );
+      st = ReOpenFileAtServer( *pLoadBalancer, 0 );
     else
-      st = ReOpenFileAtServer( *pDataServer, 300 );
+      st = ReOpenFileAtServer( *pDataServer, 0 );
 
     if( !st.IsOK() )
     {
@@ -1354,13 +1360,38 @@ namespace XrdCl
   }
 
   //----------------------------------------------------------------------------
+  // Send a close and ignore the response
+  //----------------------------------------------------------------------------
+  Status FileStateHandler::SendClose( uint16_t timeout )
+  {
+    Message            *msg;
+    ClientCloseRequest *req;
+    MessageUtils::CreateRequest( msg, req );
+
+    req->requestid = kXR_close;
+    memcpy( req->fhandle, pFileHandle, 4 );
+
+    XRootDTransport::SetDescription( msg );
+    msg->SetSessionId( pSessionId );
+    NullResponseHandler *handler = new NullResponseHandler();
+    MessageSendParams params;
+    params.timeout         = timeout;
+    params.followRedirects = false;
+    params.stateful        = true;
+
+    MessageUtils::ProcessSendParams( params );
+
+    return MessageUtils::SendMessage( *pDataServer, msg, handler, params );
+  }
+
+  //----------------------------------------------------------------------------
   // Re-open the current file at a given server
   //----------------------------------------------------------------------------
   Status FileStateHandler::ReOpenFileAtServer( const URL &url, uint16_t timeout )
   {
     Log *log = DefaultEnv::GetLog();
     log->Dump( FileMsg, "[0x%x@%s] Sending a recovery open command to %s",
-               this, pFileUrl->GetURL().c_str(), url.GetHostId().c_str() );
+               this, pFileUrl->GetURL().c_str(), url.GetURL().c_str() );
 
     //--------------------------------------------------------------------------
     // Remove the kXR_delete and kXR_new flags, we don't want the recovery
@@ -1372,7 +1403,11 @@ namespace XrdCl
 
     Message           *msg;
     ClientOpenRequest *req;
-    std::string        path = pFileUrl->GetPathWithParams();
+
+    URL u = *pFileUrl;
+    if( !url.GetPath().empty() )
+      u.SetPath( url.GetPath() );
+    std::string        path = u.GetPathWithParams();
     MessageUtils::CreateRequest( msg, req, path.length() );
 
     req->requestid = kXR_open;

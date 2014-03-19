@@ -235,7 +235,7 @@ namespace XrdCl
       //------------------------------------------------------------------------
       //! Handle stateful redirect
       //------------------------------------------------------------------------
-      void OnStateRedirection( RedirectInfo      *redirectInfo,
+      void OnStateRedirection( const std::string &redirectUrl,
                                Message           *message,
                                ResponseHandler   *userHandler,
                                MessageSendParams &sendParams );
@@ -348,6 +348,11 @@ namespace XrdCl
       //! Run the recovery procedure if appropriate
       //------------------------------------------------------------------------
       Status RunRecovery();
+
+      //------------------------------------------------------------------------
+      // Send a close and ignore the response
+      //------------------------------------------------------------------------
+      Status SendClose( uint16_t timeout );
 
       //------------------------------------------------------------------------
       //! Check if the file is open for read only

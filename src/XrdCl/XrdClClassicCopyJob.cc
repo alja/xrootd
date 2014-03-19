@@ -1091,7 +1091,9 @@ namespace
         if( pCoerce )
           flags |= OpenFlags::Force;
 
-        return pFile->Open( pUrl->GetURL(), flags, Access::UR|Access::UW);
+        Access::Mode mode = Access::UR|Access::UW|Access::GR|Access::OR;
+
+        return pFile->Open( pUrl->GetURL(), flags, mode );
       }
 
       //------------------------------------------------------------------------
@@ -1150,7 +1152,7 @@ namespace XrdCl
     std::string checkSumMode;
     std::string checkSumType;
     std::string checkSumPreset;
-    uint8_t     parallelChunks;
+    uint16_t    parallelChunks;
     uint32_t    chunkSize;
     bool        posc, force, coerce, makeDir, dynamicSource;
 
