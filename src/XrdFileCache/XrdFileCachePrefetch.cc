@@ -648,7 +648,8 @@ ssize_t Prefetch::ReadInBlocks(char *buff, off_t off, size_t size)
          m_ram.m_writeMutex.UnLock();
          if (RamIdx >= 0) {
             clLog()->Dump(XrdCl::AppMsg, "Prefetch::ReadInBlocks  ram = %d file block = %d", RamIdx, blockIdx);
-            char *rbuff = m_ram.m_buffer + RamIdx*m_cfi.GetBufferSize();
+            int in_block_off = off - m_ram.m_blockStates[RamIdx].fileBlockIdx *m_cfi.GetBufferSize();
+            char *rbuff = m_ram.m_buffer + RamIdx*m_cfi.GetBufferSize() + in_block_off;
             memcpy(buff, rbuff, readBlockSize);
             retvalBlock = readBlockSize;
          }
