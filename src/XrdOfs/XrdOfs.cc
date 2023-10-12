@@ -2536,9 +2536,8 @@ int XrdOfs::Emsg(const char    *pfx,    // Message prefix value
     if (ecode < 0) ecode = -ecode;
     if (ecode == EBUSY) return 5;  // A hack for proxy support
 
-// Comment ETIMEOUT case below. Unused.
 // Check for timeout conditions that require a client delay
-// if (ecode == ETIMEDOUT) return OSSDelay;
+    if (ecode == ETIMEDOUT) return OSSDelay;
 
 // Format the error message
 //

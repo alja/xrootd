@@ -143,7 +143,7 @@ int XrdPfcFSctl::FSctl(const int               cmd,
      }
      else
      {
-        ec = ETIMEDOUT;
+        ec = ETIME;
         rc = SFS_ERROR;
         TRACE(Info,"Cache "<<xeq<<' '<<path<<" rc="<<ec<<" ec="<<ec<<" msg=file not in cache");
      }
