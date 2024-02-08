@@ -423,6 +423,51 @@ void Cache::Purge()
          }
       }
 
+      /////////////////////////////////////////////////////////////
+      ///
+      /// TEST PLUGIN begin
+      ///
+      /////////////////////////////////////////////////////////////
+
+      XrdPfcDirPurgeFileCfg testPlg;
+      // set dir stat for each path and calculate nBytes to rocover for each path
+      // return total bytes to recover within the plugin
+      long long clearVal = testPlg.GetBytesToRecover(m_fs_state->get_root());
+      if (clearVal)
+      {
+         DirPurgeRequest::list_t &dpl = testPlg.refDirInfos();
+         // iterate through the plugin paths
+         for (DirPurgeRequest::list_i ppit = dpl.begin(); ppit != dpl.end(); ++ppit)
+         {
+            XrdOssDF *dh_plg = m_oss->newDir(m_configuration.m_username.c_str());
+            FPurgeState purgeState_plg(ppit->nBytesToRecover, *m_oss);
+            if (dh_plg->Opendir(ppit->path.c_str(), env) == XrdOssOK)
+            {
+               DirState* plg_dirState = ppit->dirState;
+               purgeState_plg.begin_traversal(plg_dirState);
+               purgeState_plg.TraverseNamespace(dh_plg);
+               purgeState_plg.end_traversal();
+               dh_plg->Close();
+            }
+
+            // fill central map from the plugin entry
+            for (FPurgeState::map_i it = purgeState_plg.refMap().begin(); it != purgeState_plg.refMap().end(); ++it)
+            {
+               it->second.path = ppit->path + it->second.path;
+               printf("AMT found %s bytes %lld \n", it->second.path.c_str(), it->second.nBytes);
+               purgeState.refMap().insert(std::make_pair(0, it->second)); // set atime to zero to make sure this is deleted
+            }
+         }
+         bytesToRemove = std::max(clearVal, bytesToRemove);
+         purge_required = true; // set the falg!
+      }
+
+      /////////////////////////////////////////////////////////////
+      ///
+      /// TEST PLUGIN end
+      ///
+      /////////////////////////////////////////////////////////////
+
       // Dump statistcs before actual purging so maximum usage values get recorded.
       // Should really go to gstream --- and should really go from Heartbeat.
       if (m_configuration.is_dir_stat_reporting_on())
@@ -439,6 +484,7 @@ void Cache::Purge()
          long long   protected_sum = 0;
          for (FPurgeState::map_i it = purgeState.refMap().begin(); it != purgeState.refMap().end(); ++it)
          {
+            printf("AMT attempting to unlink file %s \n", it->second.path.c_str());
             // Finish when enough space has been freed but not while age-based purging is in progress.
             // Those files are marked with time-stamp = 0.
             if (bytesToRemove <= 0 && ! (enforce_age_based_purge && it->first == 0))

@@ -9,7 +9,7 @@
 
 // Temporary, extensive purge tracing
 // #define TRACE_PURGE(x) TRACE(Debug, x)
-// #define TRACE_PURGE(x) std::cout << "PURGE " << x << "\n"
+#define TRACE_PURGE(x) std::cout << "PURGE " << x << "\n"
 #define TRACE_PURGE(x)
 
 using namespace XrdPfc;
