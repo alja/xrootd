@@ -255,6 +255,13 @@ void Cache::ExecuteCommandUrl(const std::string& command_url)
 
             m_writeQ.writes_between_purges += file_size;
          }
+         {
+            XrdSysCondVarHelper lock(&m_active_cond);
+
+            XrdPfc::Stats stats;
+            stats.m_BytesWritten = file_size;
+            m_closed_files_stats.insert({file_path, stats});
+         }
       }
    }
 
