@@ -1,6 +1,7 @@
 #include "XrdPfc.hh"
 #include "XrdPfcDirState.hh"
 #include "XrdPfcFPurgeState.hh"
+#include "XrdPfcDirPurgeFileCfg.hh"
 #include "XrdPfcTrace.hh"
 
 #include <fcntl.h>
@@ -435,9 +436,9 @@ void Cache::Purge()
       long long clearVal = testPlg.GetBytesToRecover(m_fs_state->get_root());
       if (clearVal)
       {
-         DirPurgeRequest::list_t &dpl = testPlg.refDirInfos();
+         DirPurge::list_t &dpl = testPlg.refDirInfos();
          // iterate through the plugin paths
-         for (DirPurgeRequest::list_i ppit = dpl.begin(); ppit != dpl.end(); ++ppit)
+         for (DirPurge::list_i ppit = dpl.begin(); ppit != dpl.end(); ++ppit)
          {
             XrdOssDF *dh_plg = m_oss->newDir(m_configuration.m_username.c_str());
             FPurgeState purgeState_plg(ppit->nBytesToRecover, *m_oss);

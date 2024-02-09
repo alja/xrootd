@@ -7,7 +7,7 @@
 class XrdPfcDirPurgeFileCfg : public XrdPfc::DirPurge
 {
 public:
-    {
+    XrdPfcDirPurgeFileCfg () {
         DirInfo d1;
         d1.path = "/test/a_LEVEL_1/";
         d1.nBytesQuota = 30 * 1024LL * 1024LL * 1024LL;
@@ -24,7 +24,7 @@ public:
     //----------------------------------------------------------------------------
     virtual long long GetBytesToRecover(XrdPfc::DirState *ds)
     {
-        // setup disuusage for each dir path
+        // setup diskusage for each dir path
         InitDirStatesForLocalPaths(ds);
 
         long long totalToRemove = 0;

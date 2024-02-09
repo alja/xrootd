@@ -18,29 +18,29 @@ class DirPurge
 public:
    struct DirInfo
    {
-    std::string path;
-    long long   nBytesQuota{0};
-    DirState*   dirState{nullptr};// cached
-    long long   nBytesToRecover{0};
+      std::string path;
+      long long nBytesQuota{0};
+      DirState *dirState{nullptr}; // currently cached and shared within the purge thread
+      long long nBytesToRecover{0};
    };
 
    typedef std::vector<DirInfo> list_t;
-   typedef list_t::iterator     list_i; 
+   typedef list_t::iterator list_i;
 
 protected:
    list_t m_list;
 
 public:
-   virtual ~DirPurgeRequest() {}
+   virtual ~DirPurge() {}
 
    void InitDirStatesForLocalPaths(XrdPfc::DirState *rootDS)
    {
-       for (list_i it = m_list.begin(); it != m_list.end(); ++it)
-       {
-           it->dirState = rootDS->find_path(it->path, Cache::Conf().m_dirStatsStoreDepth, false, false);
-       }
+      for (list_i it = m_list.begin(); it != m_list.end(); ++it)
+      {
+         it->dirState = rootDS->find_path(it->path, Cache::Conf().m_dirStatsStoreDepth, false, false);
+      }
    }
-   
+
    //---------------------------------------------------------------------
    //! Provide erase information from directory statistics
    //!
@@ -48,9 +48,9 @@ public:
    //!
    //! @return total number of bytes
    //---------------------------------------------------------------------
-   virtual long long GetBytesToRecover(XrdPfc::DirState*) = 0;
+   virtual long long GetBytesToRecover(XrdPfc::DirState *) = 0;
 
-   list_t& refDirInfos() { return m_list; }
+   list_t &refDirInfos() { return m_list; }
 };
 }
 

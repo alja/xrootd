@@ -1,6 +1,7 @@
 #ifndef __XRDPFC_FPURGESTATE_HH__
 #define __XRDPFC_FPURGESTATE_HH__
 #include "XrdPfc.hh"
+#include "XrdPfcStats.hh"
 #include "XrdPfcDirState.hh"
 #include "XrdPfcFPurgeState.hh"
 #include "XrdPfcTrace.hh"
