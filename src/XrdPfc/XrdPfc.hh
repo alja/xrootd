@@ -31,6 +31,7 @@
 
 #include "XrdPfcFile.hh"
 #include "XrdPfcDecision.hh"
+#include "XrdPfcDirPurge.hh"
 
 class XrdOucStream;
 class XrdSysError;
@@ -399,6 +400,7 @@ private:
    bool ConfigXeq(char *, XrdOucStream &);
    bool xcschk(XrdOucStream &);
    bool xdlib(XrdOucStream &);
+   bool xplib(XrdOucStream &);
    bool xtrace(XrdOucStream &);
 
    bool cfg2bytes(const std::string &str, long long &store, long long totalSpace, const char *name);
@@ -415,6 +417,7 @@ private:
    XrdXrootdGStream *m_gstream;
 
    std::vector<XrdPfc::Decision*> m_decisionpoints;       //!< decision plugins
+   XrdPfc::DirPurge*  m_dirpurge;           //!< purge plugin
 
    Configuration m_configuration;           //!< configurable parameters
 

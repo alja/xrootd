@@ -2,6 +2,8 @@
 #include "XrdPfcTrace.hh"
 #include "XrdPfcInfo.hh"
 
+#include "XrdPfcDirPurgeFileCfg.hh"
+
 #include "XrdOss/XrdOss.hh"
 
 #include "XrdOuc/XrdOucEnv.hh"
@@ -226,6 +228,62 @@ bool Cache::xdlib(XrdOucStream &Config)
    return true;
 }
 
+/* Function: xplib
+
+   Purpose:  To parse the directive: purgelib <path> [<parms>]
+
+             <path>  the path of the decision library to be used.
+             <parms> optional parameters to be passed.
+
+
+   Output: true upon success or false upon failure.
+ */
+bool Cache::xplib(XrdOucStream &Config)
+{
+   const char*  val;
+
+   std::string libp;
+   if (! (val = Config.GetWord()) || ! val[0])
+   {
+      TRACE(Info," Cache::Config() decisionlib not specified; always caching files");
+      return true;
+   }
+   else
+   {
+      libp = val;
+   }
+
+   char params[4096];
+   if (val[0])
+      Config.GetRest(params, 4096);
+   else
+      params[0] = 0;
+
+/*
+   XrdOucPinLoader* myLib = new XrdOucPinLoader(&m_log, 0, "purgelib",
+                                                libp.c_str());
+
+   DirPurge *(*ep)(XrdSysError&);
+   ep = (DirPurge *(*)(XrdSysError&))myLib->Resolve("XrdPfcGetDirPurge");
+   if (! ep) {myLib->Unload(true); return false; }
+
+   DirPurge * dp = ep(m_log);
+   if (! dp)
+   {
+      TRACE(Error, "Config() decisionlib was not able to create a directory purge object");
+      return false;
+   }
+   m_dirpurge = dp;
+   */
+
+   m_dirpurge = new XrdPfcDirPurgeFileCfg();
+   if (params[0])
+      m_dirpurge->ConfigDirPurge(params);
+
+
+   return true;
+}
+
 /* Function: xtrace
 
    Purpose:  To parse the directive: trace <level>
@@ -331,6 +389,10 @@ bool Cache::Config(const char *config_filename, const char *parameters)
       else if (! strcmp(var,"pfc.decisionlib"))
       {
          retval = xdlib(Config);
+      }
+      else if (! strcmp(var,"pfc.purgelib"))
+      {
+         retval = xplib(Config);
       }
       else if (! strcmp(var,"pfc.trace"))
       {

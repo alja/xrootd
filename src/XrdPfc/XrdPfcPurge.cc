@@ -1,7 +1,7 @@
 #include "XrdPfc.hh"
 #include "XrdPfcDirState.hh"
 #include "XrdPfcFPurgeState.hh"
-#include "XrdPfcDirPurgeFileCfg.hh"
+#include "XrdPfcDirPurge.hh"
 #include "XrdPfcTrace.hh"
 
 #include <fcntl.h>
@@ -429,40 +429,40 @@ void Cache::Purge()
       /// TEST PLUGIN begin
       ///
       /////////////////////////////////////////////////////////////
-
-      XrdPfcDirPurgeFileCfg testPlg;
-      // set dir stat for each path and calculate nBytes to rocover for each path
-      // return total bytes to recover within the plugin
-      long long clearVal = testPlg.GetBytesToRecover(m_fs_state->get_root());
-      if (clearVal)
+      if (m_dirpurge)
       {
-         DirPurge::list_t &dpl = testPlg.refDirInfos();
-         // iterate through the plugin paths
-         for (DirPurge::list_i ppit = dpl.begin(); ppit != dpl.end(); ++ppit)
+         // set dir stat for each path and calculate nBytes to rocover for each path
+         // return total bytes to recover within the plugin
+         long long clearVal = m_dirpurge->GetBytesToRecover(m_fs_state->get_root());
+         if (clearVal)
          {
-            XrdOssDF *dh_plg = m_oss->newDir(m_configuration.m_username.c_str());
-            FPurgeState purgeState_plg(ppit->nBytesToRecover, *m_oss);
-            if (dh_plg->Opendir(ppit->path.c_str(), env) == XrdOssOK)
+            DirPurge::list_t &dpl = m_dirpurge->refDirInfos();
+            // iterate through the plugin paths
+            for (DirPurge::list_i ppit = dpl.begin(); ppit != dpl.end(); ++ppit)
             {
-               DirState* plg_dirState = ppit->dirState;
-               purgeState_plg.begin_traversal(plg_dirState);
-               purgeState_plg.TraverseNamespace(dh_plg);
-               purgeState_plg.end_traversal();
-               dh_plg->Close();
-            }
+               XrdOssDF *dh_plg = m_oss->newDir(m_configuration.m_username.c_str());
+               FPurgeState purgeState_plg(ppit->nBytesToRecover, *m_oss);
+               if (dh_plg->Opendir(ppit->path.c_str(), env) == XrdOssOK)
+               {
+                  DirState *plg_dirState = ppit->dirState;
+                  purgeState_plg.begin_traversal(plg_dirState);
+                  purgeState_plg.TraverseNamespace(dh_plg);
+                  purgeState_plg.end_traversal();
+                  dh_plg->Close();
+               }
 
-            // fill central map from the plugin entry
-            for (FPurgeState::map_i it = purgeState_plg.refMap().begin(); it != purgeState_plg.refMap().end(); ++it)
-            {
-               it->second.path = ppit->path + it->second.path;
-               printf("AMT found %s bytes %lld \n", it->second.path.c_str(), it->second.nBytes);
-               purgeState.refMap().insert(std::make_pair(0, it->second)); // set atime to zero to make sure this is deleted
+               // fill central map from the plugin entry
+               for (FPurgeState::map_i it = purgeState_plg.refMap().begin(); it != purgeState_plg.refMap().end(); ++it)
+               {
+                  it->second.path = ppit->path + it->second.path;
+                  printf("AMT found %s bytes %lld \n", it->second.path.c_str(), it->second.nBytes);
+                  purgeState.refMap().insert(std::make_pair(0, it->second)); // set atime to zero to make sure this is deleted
+               }
             }
+            bytesToRemove = std::max(clearVal, bytesToRemove);
+            purge_required = true; // set the falg!
          }
-         bytesToRemove = std::max(clearVal, bytesToRemove);
-         purge_required = true; // set the falg!
       }
-
       /////////////////////////////////////////////////////////////
       ///
       /// TEST PLUGIN end

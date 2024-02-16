@@ -4,12 +4,12 @@
 #include <string>
 #include <vector>
 #include "XrdPfc.hh"
-
-class XrdPfcDirState;
-
+// #include "XrdPfcDirState.hh"
 
 namespace XrdPfc
 {
+class DirState;
+
 //----------------------------------------------------------------------------
 //! Base class for reguesting directory space to obtain.
 //----------------------------------------------------------------------------
@@ -33,14 +33,6 @@ protected:
 public:
    virtual ~DirPurge() {}
 
-   void InitDirStatesForLocalPaths(XrdPfc::DirState *rootDS)
-   {
-      for (list_i it = m_list.begin(); it != m_list.end(); ++it)
-      {
-         it->dirState = rootDS->find_path(it->path, Cache::Conf().m_dirStatsStoreDepth, false, false);
-      }
-   }
-
    //---------------------------------------------------------------------
    //! Provide erase information from directory statistics
    //!
@@ -50,6 +42,24 @@ public:
    //---------------------------------------------------------------------
    virtual long long GetBytesToRecover(XrdPfc::DirState *) = 0;
 
+   //------------------------------------------------------------------------------
+   //! Parse configuration arguments.
+   //!
+   //! @param params configuration parameters
+   //!
+   //! @return status of configuration
+   //------------------------------------------------------------------------------
+   virtual bool ConfigDirPurge(const char* params)  // ?? AMT should this be abstract
+   {
+      (void) params;
+      return true;
+   }
+
+   //-----------------------------------------------
+   //!
+   //!  Get quotas for the given paths. Used in the XrdPfc:Cache::Purge() thread.
+   //!
+   //------------------------------------------------------------------------------
    list_t &refDirInfos() { return m_list; }
 };
 }
