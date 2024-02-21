@@ -5,6 +5,7 @@
 set( LIB_XRD_FILECACHE  XrdPfc-${PLUGIN_VERSION} )
 set( LIB_XRD_FILECACHE_LEGACY XrdFileCache-${PLUGIN_VERSION} )
 set( LIB_XRD_BLACKLIST  XrdBlacklistDecision-${PLUGIN_VERSION} )
+set( LIB_XRD_DIRPURGE  XrdDirPurge-${PLUGIN_VERSION} )
 
 #-------------------------------------------------------------------------------
 # Shared library version
@@ -15,7 +16,7 @@ set( LIB_XRD_BLACKLIST  XrdBlacklistDecision-${PLUGIN_VERSION} )
 #-------------------------------------------------------------------------------
 add_library(
   ${LIB_XRD_FILECACHE}
-  MODULE
+  SHARED
   XrdPfc/XrdPfcTypes.hh
   XrdPfc/XrdPfc.cc              XrdPfc/XrdPfc.hh
   XrdPfc/XrdPfcConfiguration.cc
@@ -54,6 +55,21 @@ target_link_libraries(
   PRIVATE
   XrdUtils
   )
+
+#-------------------------------------------------------------------------------
+# The XrdDirPurgeFileCfg library
+#-------------------------------------------------------------------------------
+add_library(
+  ${LIB_XRD_DIRPURGE}
+  MODULE
+  XrdPfc/XrdPfcDirPurgeFileCfg.cc)
+
+target_link_libraries(
+    ${LIB_XRD_DIRPURGE}
+    PRIVATE
+    XrdUtils
+    ${LIB_XRD_FILECACHE}
+    )
 
 #-------------------------------------------------------------------------------
 # xrdpfc_print
