@@ -3,8 +3,6 @@
 
 #include <string>
 #include <vector>
-#include "XrdPfc.hh"
-// #include "XrdPfcDirState.hh"
 
 namespace XrdPfc
 {
@@ -40,7 +38,7 @@ public:
    //!
    //! @return total number of bytes
    //---------------------------------------------------------------------
-   virtual long long GetBytesToRecover(XrdPfc::DirState *) = 0;
+   virtual long long GetBytesToRecover(DirState *) = 0;
 
    //------------------------------------------------------------------------------
    //! Parse configuration arguments.
@@ -65,4 +63,3 @@ public:
 }
 
 #endif
-

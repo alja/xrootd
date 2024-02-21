@@ -19,7 +19,6 @@
 //----------------------------------------------------------------------------------
 
 #include "XrdCl/XrdClXRootDResponses.hh"
-#include "XrdCl/XrdClDefaultEnv.hh"
 
 #include "XrdOuc/XrdOucCache.hh"
 #include "XrdOuc/XrdOucIOVec.hh"

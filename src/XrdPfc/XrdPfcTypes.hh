@@ -1,5 +1,6 @@
 #ifndef __XRDPFC_TYPES_HH__
 #define __XRDPFC_TYPES_HH__
+#include <cstdint>
 //----------------------------------------------------------------------------------
 // Copyright (c) 2014 by Board of Trustees of the Leland Stanford, Jr., University
 // Author: Alja Mrak-Tadel, Matevz  Tadel, Brian Bockelman

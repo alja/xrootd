@@ -27,11 +27,10 @@
 #include "XrdSys/XrdSysPthread.hh"
 #include "XrdOuc/XrdOucCache.hh"
 #include "XrdOuc/XrdOucCallBack.hh"
-#include "XrdCl/XrdClDefaultEnv.hh"
+// #include "XrdCl/XrdClDefaultEnv.hh"
 
 #include "XrdPfcFile.hh"
 #include "XrdPfcDecision.hh"
-#include "XrdPfcDirPurge.hh"
 
 class XrdOucStream;
 class XrdSysError;
@@ -42,7 +41,7 @@ namespace XrdPfc
 {
 class File;
 class IO;
-
+class DirPurge;
 class DataFsState;
 }
 

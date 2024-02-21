@@ -1,7 +1,6 @@
 #ifndef __XRDPFC_DIRSTATE_HH__
 #define __XRDPFC_DIRSTATE_HH__
 
-// #include "XrdPfcTrace.hh"
 #include "XrdPfcInfo.hh"
 
 using namespace XrdPfc;

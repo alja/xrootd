@@ -24,8 +24,6 @@
 #include <vector>
 
 #include "XrdSys/XrdSysPthread.hh"
-#include "XrdCl/XrdClConstants.hh"
-#include "XrdCl/XrdClDefaultEnv.hh"
 
 #include "XrdPfcTypes.hh"
 
