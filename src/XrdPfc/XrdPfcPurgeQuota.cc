@@ -77,7 +77,7 @@ public:
         }
 
         Config.Attach(fd);
-        static const char *cvec[] = {"*** pfc purge plugin :", 0}; // ?? AMT where is this used
+        static const char *cvec[] = {"*** pfc purge plugin :", 0};
         Config.Capture(cvec);
 
         char *var;
