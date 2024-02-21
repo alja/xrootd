@@ -426,7 +426,7 @@ void Cache::Purge()
 
       /////////////////////////////////////////////////////////////
       ///
-      /// TEST PLUGIN begin
+      /// PurgePin begin
       ///
       /////////////////////////////////////////////////////////////
       if (m_dirpurge)
@@ -436,10 +436,12 @@ void Cache::Purge()
          long long clearVal = m_dirpurge->GetBytesToRecover(m_fs_state->get_root());
          if (clearVal)
          {
+            TRACE(Debug, "PurgePin remove total " << clearVal << " bytes");
             DirPurge::list_t &dpl = m_dirpurge->refDirInfos();
             // iterate through the plugin paths
             for (DirPurge::list_i ppit = dpl.begin(); ppit != dpl.end(); ++ppit)
             {
+               TRACE(Debug, "\tPurgePin scanning dir " << ppit->path.c_str() << " to remove " << ppit->nBytesToRecover << " bytes");
                XrdOssDF *dh_plg = m_oss->newDir(m_configuration.m_username.c_str());
                FPurgeState purgeState_plg(ppit->nBytesToRecover, *m_oss);
                if (dh_plg->Opendir(ppit->path.c_str(), env) == XrdOssOK)
@@ -455,7 +457,7 @@ void Cache::Purge()
                for (FPurgeState::map_i it = purgeState_plg.refMap().begin(); it != purgeState_plg.refMap().end(); ++it)
                {
                   it->second.path = ppit->path + it->second.path;
-                  printf("AMT found %s bytes %lld \n", it->second.path.c_str(), it->second.nBytes);
+                  TRACE(Debug, "\t\tPurgePin found file " << it->second.path.c_str()<< " size " << it->second.nBytes);
                   purgeState.refMap().insert(std::make_pair(0, it->second)); // set atime to zero to make sure this is deleted
                }
             }
@@ -465,7 +467,7 @@ void Cache::Purge()
       }
       /////////////////////////////////////////////////////////////
       ///
-      /// TEST PLUGIN end
+      /// PurgePin end
       ///
       /////////////////////////////////////////////////////////////
 
@@ -485,7 +487,6 @@ void Cache::Purge()
          long long   protected_sum = 0;
          for (FPurgeState::map_i it = purgeState.refMap().begin(); it != purgeState.refMap().end(); ++it)
          {
-            printf("AMT attempting to unlink file %s \n", it->second.path.c_str());
             // Finish when enough space has been freed but not while age-based purging is in progress.
             // Those files are marked with time-stamp = 0.
             if (bytesToRemove <= 0 && ! (enforce_age_based_purge && it->first == 0))
