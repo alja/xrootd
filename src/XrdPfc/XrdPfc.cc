@@ -189,7 +189,7 @@ Cache::Cache(XrdSysLogger *logger, XrdOucEnv *env) :
    m_traceID("Cache"),
    m_oss(0),
    m_gstream(0),
-   m_dirpurge(0),
+   m_purge_pin(0),
    m_prefetch_condVar(0),
    m_prefetch_enabled(false),
    m_RAM_used(0),

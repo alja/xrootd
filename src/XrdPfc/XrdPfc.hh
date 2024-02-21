@@ -9,7 +9,7 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 //
-// XRootD is distributed in the hope that it will be useful,
+// XRootD is distributed in the hope that it will be useful,fm_pu
 // but WITHOUT ANY emacs WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
@@ -40,7 +40,7 @@ namespace XrdPfc
 {
 class File;
 class IO;
-class DirPurge;
+class PurgePin;
 class DataFsState;
 }
 
@@ -415,7 +415,7 @@ private:
    XrdXrootdGStream *m_gstream;
 
    std::vector<XrdPfc::Decision*> m_decisionpoints;       //!< decision plugins
-   XrdPfc::DirPurge*  m_dirpurge;           //!< purge plugin
+   XrdPfc::PurgePin*  m_purge_pin;           //!< purge plugin
 
    Configuration m_configuration;           //!< configurable parameters
 

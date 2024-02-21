@@ -2,7 +2,7 @@
 #include "XrdPfcTrace.hh"
 #include "XrdPfcInfo.hh"
 
-#include "XrdPfcDirPurge.hh"
+#include "XrdPfcPurgePin.hh"
 
 #include "XrdOss/XrdOss.hh"
 
@@ -262,20 +262,20 @@ bool Cache::xplib(XrdOucStream &Config)
    XrdOucPinLoader* myLib = new XrdOucPinLoader(&m_log, 0, "purgelib",
                                                 libp.c_str());
 
-   DirPurge *(*ep)(XrdSysError&);
-   ep = (DirPurge *(*)(XrdSysError&))myLib->Resolve("XrdPfcGetDirPurge");
+   PurgePin *(*ep)(XrdSysError&);
+   ep = (PurgePin *(*)(XrdSysError&))myLib->Resolve("XrdPfcGetPurgePin");
    if (! ep) {myLib->Unload(true); return false; }
 
-   DirPurge * dp = ep(m_log);
+   PurgePin * dp = ep(m_log);
    if (! dp)
    {
       TRACE(Error, "Config() decisionlib was not able to create a directory purge object");
       return false;
    }
-   m_dirpurge = dp;
+   m_purge_pin = dp;
 
    if (params[0])
-      m_dirpurge->ConfigDirPurge(params);
+      m_purge_pin->ConfigPurgePin(params);
 
 
    return true;

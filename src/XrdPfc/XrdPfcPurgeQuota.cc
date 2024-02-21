@@ -1,5 +1,5 @@
 #include "XrdPfc.hh"
-#include "XrdPfcDirPurge.hh"
+#include "XrdPfcPurgePin.hh"
 #include "XrdPfcDirState.hh"
 
 #include "XrdOuc/XrdOucEnv.hh"
@@ -9,7 +9,7 @@
 
 #include <fcntl.h>
 
-class XrdPfcPurgeQuota : public XrdPfc::DirPurge
+class XrdPfcPurgeQuota : public XrdPfc::PurgePin
 {
 public:
     XrdPfcPurgeQuota () {}
@@ -52,7 +52,7 @@ public:
     //----------------------------------------------------------------------------
     //! Provide bytes to erase from dir quota listed in a text file
     //----------------------------------------------------------------------------
-    virtual bool ConfigDirPurge(const char *parms)
+    virtual bool ConfigPurgePin(const char *parms)
     {
         XrdSysError *log = Cache::GetInstance().GetLog();
          
@@ -120,13 +120,13 @@ public:
 };
 
 /******************************************************************************/
-/*                          XrdPfcGetDirPurge                                 */
+/*                          XrdPfcGetPurgePin                                 */
 /******************************************************************************/
 
 // Return a purge object to use.
 extern "C"
 {
-    XrdPfc::DirPurge *XrdPfcGetDirPurge(XrdSysError &)
+    XrdPfc::PurgePin *XrdPfcGetPurgePin(XrdSysError &)
     {
         return new XrdPfcPurgeQuota();
     }

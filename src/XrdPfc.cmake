@@ -5,7 +5,7 @@
 set( LIB_XRD_FILECACHE  XrdPfc-${PLUGIN_VERSION} )
 set( LIB_XRD_FILECACHE_LEGACY XrdFileCache-${PLUGIN_VERSION} )
 set( LIB_XRD_BLACKLIST  XrdBlacklistDecision-${PLUGIN_VERSION} )
-set( LIB_XRD_DIRPURGE  XrdPfcPurgeQuota-${PLUGIN_VERSION} )
+set( LIB_XRD_PURGEQUOTA  XrdPfcPurgeQuota-${PLUGIN_VERSION} )
 
 #-------------------------------------------------------------------------------
 # Shared library version
@@ -57,15 +57,15 @@ target_link_libraries(
   )
 
 #-------------------------------------------------------------------------------
-# The XrdDirPurgeFileCfg library
+# The XrdPurgeQuota library
 #-------------------------------------------------------------------------------
 add_library(
-  ${LIB_XRD_DIRPURGE}
+  ${LIB_XRD_PURGEQUOTA}
   MODULE
   XrdPfc/XrdPfcPurgeQuota.cc)
 
 target_link_libraries(
-    ${LIB_XRD_DIRPURGE}
+    ${LIB_XRD_PURGEQUOTA}
     PRIVATE
     XrdUtils
     ${LIB_XRD_FILECACHE}

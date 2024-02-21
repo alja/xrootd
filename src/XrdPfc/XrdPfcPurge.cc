@@ -429,17 +429,17 @@ void Cache::Purge()
       /// PurgePin begin
       ///
       /////////////////////////////////////////////////////////////
-      if (m_dirpurge)
+      if (m_purge_pin)
       {
          // set dir stat for each path and calculate nBytes to rocover for each path
          // return total bytes to recover within the plugin
-         long long clearVal = m_dirpurge->GetBytesToRecover(m_fs_state->get_root());
+         long long clearVal = m_purge_pin->GetBytesToRecover(m_fs_state->get_root());
          if (clearVal)
          {
             TRACE(Debug, "PurgePin remove total " << clearVal << " bytes");
-            DirPurge::list_t &dpl = m_dirpurge->refDirInfos();
+            PurgePin::list_t &dpl = m_purge_pin->refDirInfos();
             // iterate through the plugin paths
-            for (DirPurge::list_i ppit = dpl.begin(); ppit != dpl.end(); ++ppit)
+            for (PurgePin::list_i ppit = dpl.begin(); ppit != dpl.end(); ++ppit)
             {
                TRACE(Debug, "\tPurgePin scanning dir " << ppit->path.c_str() << " to remove " << ppit->nBytesToRecover << " bytes");
                XrdOssDF *dh_plg = m_oss->newDir(m_configuration.m_username.c_str());
