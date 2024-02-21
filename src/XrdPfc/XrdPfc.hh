@@ -27,7 +27,6 @@
 #include "XrdSys/XrdSysPthread.hh"
 #include "XrdOuc/XrdOucCache.hh"
 #include "XrdOuc/XrdOucCallBack.hh"
-// #include "XrdCl/XrdClDefaultEnv.hh"
 
 #include "XrdPfcFile.hh"
 #include "XrdPfcDecision.hh"
