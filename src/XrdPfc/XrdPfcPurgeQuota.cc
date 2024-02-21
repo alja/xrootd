@@ -9,10 +9,10 @@
 
 #include <fcntl.h>
 
-class XrdPfcDirPurgeFileCfg : public XrdPfc::DirPurge
+class XrdPfcPurgeQuota : public XrdPfc::DirPurge
 {
 public:
-    XrdPfcDirPurgeFileCfg () {}
+    XrdPfcPurgeQuota () {}
 
     //----------------------------------------------------------------------------
     //! Set directory statistics
@@ -68,7 +68,7 @@ public:
         const char* config_filename = parms;
         const char *theINS = getenv("XRDINSTANCE");
         XrdOucEnv myEnv;
-        XrdOucStream Config(log, theINS, &myEnv, "=====> PurgeFileCfg ");
+        XrdOucStream Config(log, theINS, &myEnv, "=====> PurgeQuota ");
 
         int fd;
         if ((fd = open(config_filename, O_RDONLY, 0)) < 0)
@@ -88,7 +88,7 @@ public:
 
             if (!(val = Config.GetWord()))
             {
-                log->Emsg("PurgeFileCfg", "quota not specified");
+                log->Emsg("PurgeQuota plugin", "quota not specified");
                 continue;
             }
 
@@ -128,6 +128,6 @@ extern "C"
 {
     XrdPfc::DirPurge *XrdPfcGetDirPurge(XrdSysError &)
     {
-        return new XrdPfcDirPurgeFileCfg();
+        return new XrdPfcPurgeQuota();
     }
 }

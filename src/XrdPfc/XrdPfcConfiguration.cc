@@ -2,7 +2,6 @@
 #include "XrdPfcTrace.hh"
 #include "XrdPfcInfo.hh"
 
-//#include "XrdPfcDirPurgeFileCfg.hh"
 #include "XrdPfcDirPurge.hh"
 
 #include "XrdOss/XrdOss.hh"
