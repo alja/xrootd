@@ -442,19 +442,19 @@ void Cache::Purge()
             for (PurgePin::list_i ppit = dpl.begin(); ppit != dpl.end(); ++ppit)
             {
                TRACE(Debug, "\tPurgePin scanning dir " << ppit->path.c_str() << " to remove " << ppit->nBytesToRecover << " bytes");
-               XrdOssDF *dh_plg = m_oss->newDir(m_configuration.m_username.c_str());
-               FPurgeState purgeState_plg(ppit->nBytesToRecover, *m_oss);
-               if (dh_plg->Opendir(ppit->path.c_str(), env) == XrdOssOK)
+               XrdOssDF *ldh = m_oss->newDir(m_configuration.m_username.c_str());
+               FPurgeState fps(ppit->nBytesToRecover, *m_oss);
+               if (ldh->Opendir(ppit->path.c_str(), env) == XrdOssOK)
                {
-                  DirState *plg_dirState = ppit->dirState;
-                  purgeState_plg.begin_traversal(plg_dirState);
-                  purgeState_plg.TraverseNamespace(dh_plg);
-                  purgeState_plg.end_traversal();
-                  dh_plg->Close();
+                  DirState *lds = ppit->dirState;
+                  fps.begin_traversal(lds);
+                  fps.TraverseNamespace(ldh);
+                  fps.end_traversal();
+                  ldh->Close();
                }
 
                // fill central map from the plugin entry
-               for (FPurgeState::map_i it = purgeState_plg.refMap().begin(); it != purgeState_plg.refMap().end(); ++it)
+               for (FPurgeState::map_i it = fps.refMap().begin(); it != fps.refMap().end(); ++it)
                {
                   it->second.path = ppit->path + it->second.path;
                   TRACE(Debug, "\t\tPurgePin found file " << it->second.path.c_str()<< " size " << it->second.nBytes);
