@@ -18,13 +18,14 @@
 // along with XRootD.  If not, see <http://www.gnu.org/licenses/>.
 //----------------------------------------------------------------------------------
 
+#include "XrdPfcTypes.hh"
+#include "XrdPfcInfo.hh"
+#include "XrdPfcStats.hh"
+
 #include "XrdCl/XrdClXRootDResponses.hh"
 
 #include "XrdOuc/XrdOucCache.hh"
 #include "XrdOuc/XrdOucIOVec.hh"
-
-#include "XrdPfcInfo.hh"
-#include "XrdPfcStats.hh"
 
 #include <functional>
 #include <map>
@@ -41,6 +42,7 @@ class Log;
 
 namespace XrdPfc
 {
+class File;
 class BlockResponseHandler;
 class DirectResponseHandler;
 class IO;
@@ -49,12 +51,6 @@ struct ReadVBlockListRAM;
 struct ReadVChunkListRAM;
 struct ReadVBlockListDisk;
 struct ReadVChunkListDisk;
-}
-
-
-namespace XrdPfc
-{
-class  File;
 
 struct ReadReqRH : public XrdOucCacheIOCB
 {
@@ -270,12 +266,12 @@ public:
    //! Log path
    const char* lPath() const;
 
-   std::string& GetLocalPath() { return m_filename; }
+   const std::string& GetLocalPath() const { return m_filename; }
 
    XrdSysError* GetLog();
    XrdSysTrace* GetTrace();
 
-   long long GetFileSize() { return m_file_size; }
+   long long GetFileSize() const { return m_file_size; }
 
    void AddIO(IO *io);
    int  GetPrefetchCountOnIO(IO *io);
@@ -283,6 +279,7 @@ public:
    void RemoveIO(IO *io);
 
    Stats DeltaStatsFromLastCall();
+   int   GetResMonToken() const { return m_resmon_token; }
 
    std::string        GetRemoteLocations()   const;
    const Info::AStat* GetLastAccessStats()   const { return m_cfi.GetLastAccessStats(); }
@@ -315,9 +312,9 @@ private:
    XrdOssDF      *m_info_file;          //!< file handle for data-info file on disk
    Info           m_cfi;                //!< download status of file blocks and access statistics
 
-   std::string    m_filename;           //!< filename of data file on disk
-   long long      m_offset;             //!< offset of cached file for block-based / hdfs operation
-   long long      m_file_size;          //!< size of cached disk file for block-based operation
+   const std::string    m_filename;     //!< filename of data file on disk
+   const long long      m_offset;       //!< offset of cached file for block-based / hdfs operation
+   const long long      m_file_size;    //!< size of cached disk file for block-based operation
 
    // IO objects attached to this file.
 
@@ -353,6 +350,7 @@ private:
 
    Stats         m_stats;              //!< cache statistics for this instance
    Stats         m_last_stats;         //!< copy of cache stats during last purge cycle, used for per directory stat reporting
+   int           m_resmon_token;       //!< token used in communication with the ResourceMonitor
 
    std::set<std::string> m_remote_locations; //!< Gathered in AddIO / ioUpdate / ioActive.
    void insert_remote_location(const std::string &loc);

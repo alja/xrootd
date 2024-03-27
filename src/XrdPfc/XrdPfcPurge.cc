@@ -1,7 +1,8 @@
 #include "XrdPfc.hh"
+#include "XrdPfcPathParseTools.hh"
 #include "XrdPfcDirState.hh"
 #include "XrdPfcFPurgeState.hh"
-#include "XrdPfcDirPurge.hh"
+#include "XrdPfcPurgePin.hh"
 #include "XrdPfcTrace.hh"
 
 #include <fcntl.h>
@@ -9,86 +10,14 @@
 
 #include "XrdOuc/XrdOucEnv.hh"
 #include "XrdOuc/XrdOucUtils.hh"
+#include "XrdOss/XrdOss.hh"
 #include "XrdOss/XrdOssAt.hh"
 #include "XrdSys/XrdSysTrace.hh"
 
 using namespace XrdPfc;
-namespace XrdPfc
-{
-
-/*
-XrdSysTrace* GetTrace()
-{
-   // needed for logging macros
-   return Cache::GetInstance().GetTrace();
-}*/
 
 //==============================================================================
-// DataFsState
-//==============================================================================
-
-class DataFsState
-{
-   int       m_max_depth;
-   DirState  m_root;
-   time_t    m_prev_time;
-
-public:
-   DataFsState() :
-      m_max_depth ( Cache::Conf().m_dirStatsStoreDepth ),
-      m_root      ( m_max_depth ),
-      m_prev_time ( time(0) )
-   {}
-
-   int       get_max_depth() const { return m_max_depth; }
-
-   DirState* get_root()            { return & m_root; }
-
-   DirState* find_dirstate_for_lfn(const std::string& lfn)
-   {
-      return m_root.find_path(lfn, m_max_depth, true, true);
-   }
-
-   void reset_stats()                   { m_root.reset_stats();                   }
-   void upward_propagate_stats()        { m_root.upward_propagate_stats();        }
-   void upward_propagate_usage_purged() { m_root.upward_propagate_usage_purged(); }
-
-   void dump_recursively()
-   {
-      time_t now = time(0);
-
-      printf("DataFsState::dump_recursively epoch = %lld delta_t = %lld max_depth = %d\n",
-             (long long) now, (long long) (now - m_prev_time), m_max_depth);
-
-      m_prev_time = now;
-
-      m_root.dump_recursively("root");
-   }
-};
-
-
-
-const char *FPurgeState::m_traceID = "Purge";
-
-
-//==============================================================================
-// ResourceMonitor
-//==============================================================================
-
-// Encapsulates local variables used withing the previous mega-function Purge().
-//
-// This will be used within the continuously/periodically ran heart-beat / breath
-// function ... and then parts of it will be passed to invoked FS scan and purge
-// jobs (which will be controlled throught this as well).
-
-class ResourceMonitor
-{
-
-};
-
-
-//==============================================================================
-//
+// anonymous
 //==============================================================================
 
 namespace
@@ -108,136 +37,7 @@ public:
 // Cache methods
 //==============================================================================
 
-void Cache::copy_out_active_stats_and_update_data_fs_state()
-{
-   static const char *trc_pfx = "copy_out_active_stats_and_update_data_fs_state() ";
 
-   StatsMMap_t updates;
-   {
-      XrdSysCondVarHelper lock(&m_active_cond);
-
-      // Slurp in stats from files closed since last cycle.
-      updates.swap( m_closed_files_stats );
-
-      for (ActiveMap_i i = m_active.begin(); i != m_active.end(); ++i)
-      {
-         if (i->second != 0)
-         {
-            updates.insert(std::make_pair(i->first, i->second->DeltaStatsFromLastCall()));
-         }
-      }
-   }
-
-   m_fs_state->reset_stats(); // XXXX-CKSUM rethink how to do this if we keep some purge entries for next time
-
-   for (StatsMMap_i i = updates.begin(); i != updates.end(); ++i)
-   {
-      DirState *ds = m_fs_state->find_dirstate_for_lfn(i->first);
-
-      if (ds == 0)
-      {
-         TRACE(Error, trc_pfx << "Failed finding DirState for file '" << i->first << "'.");
-         continue;
-      }
-
-      ds->add_up_stats(i->second);
-   }
-
-   m_fs_state->upward_propagate_stats();
-}
-
-
-//==============================================================================
-
-void Cache::ResourceMonitorHeartBeat()
-{
-   // static const char *trc_pfx = "ResourceMonitorHeartBeat() ";
-
-   // Pause before initial run
-   sleep(1);
-
-   // XXXX Setup initial / constant stats (total RAM, total disk, ???)
-
-   XrdOucCacheStats             &S = Statistics;
-   XrdOucCacheStats::CacheStats &X = Statistics.X;
-
-   S.Lock();
-
-   X.DiskSize = m_configuration.m_diskTotalSpace;
-
-   X.MemSize = m_configuration.m_RamAbsAvailable;
-
-   S.UnLock();
-
-   // XXXX Schedule initial disk scan, time it!
-   //
-   // TRACE(Info, trc_pfx << "scheduling intial disk scan.");
-   // schedP->Schedule( new ScanAndPurgeJob("XrdPfc::ScanAndPurge") );
-   //
-   // bool scan_and_purge_running = true;
-
-   // XXXX Could we really hold last-usage for all files in memory?
-
-   // XXXX Think how to handle disk-full, scan/purge not finishing:
-   // - start dropping things out of write queue, but only when RAM gets near full;
-   // - monitoring this then becomes a high-priority job, inner loop with sleep of,
-   //   say, 5 or 10 seconds.
-
-   while (true)
-   {
-      time_t heartbeat_start = time(0);
-
-      // TRACE(Info, trc_pfx << "HeartBeat starting ...");
-
-      // if sumary monitoring configured, pupulate OucCacheStats:
-      S.Lock();
-
-      // - available / used disk space (files usage calculated elsewhere (maybe))
-
-      // - RAM usage
-      {  XrdSysMutexHelper lck(&m_RAM_mutex);
-         X.MemUsed   = m_RAM_used;
-         X.MemWriteQ = m_RAM_write_queue;
-      }
-      // - files opened / closed etc
-
-      // do estimate of available space
-      S.UnLock();
-
-      // if needed, schedule purge in a different thread.
-      // purge is:
-      // - deep scan + gather FSPurgeState
-      // - actual purge
-      //
-      // this thread can continue running and, if needed, stop writing to disk
-      // if purge is taking too long.
-
-      // think how data is passed / synchronized between this and purge thread
-
-      // !!!! think how stat collection is done and propgated upwards;
-      // until now it was done once per purge-interval.
-      // now stats will be added up more often, but purge will be done
-      // only occasionally.
-      // also, do we report cumulative values or deltas? cumulative should
-      // be easier and consistent with summary data.
-      // still, some are state - like disk usage, num of files.
-
-      // Do we take care of directories that need to be newly added into DirState hierarchy?
-      // I.e., when user creates new directories and these are covered by either full
-      // spec or by root + depth declaration.
-
-      int heartbeat_duration = time(0) - heartbeat_start;
-
-      // TRACE(Info, trc_pfx << "HeartBeat finished, heartbeat_duration " << heartbeat_duration);
-
-      // int sleep_time = m_configuration.m_purgeInterval - heartbeat_duration;
-      int sleep_time = 60 - heartbeat_duration;
-      if (sleep_time > 0)
-      {
-         sleep(sleep_time);
-      }
-   }
-}
 
 //==============================================================================
 
@@ -251,8 +51,6 @@ void Cache::Purge()
 
    // Pause before initial run
    sleep(1);
-
-   m_fs_state = new DataFsState;
 
    // { PathTokenizer p("/a/b/c/f.root", 2, true); p.deboog(); }
    // { PathTokenizer p("/a/b/f.root", 2, true); p.deboog(); }
@@ -335,10 +133,11 @@ void Cache::Purge()
          }
       }
 
+      // XXXX this will happen in heart_beat()
       bool enforce_traversal_for_usage_collection = is_first;
-      // XXX Other conditions? Periodic checks?
 
-      copy_out_active_stats_and_update_data_fs_state();
+      // XXXX as above
+      // copy_out_active_stats_and_update_data_fs_state();
 
       TRACE(Debug, trc_pfx << "Precheck:");
       TRACE(Debug, "\tbytes_to_remove_disk    = " << bytesToRemove_d << " B");
@@ -358,7 +157,7 @@ void Cache::Purge()
 
       if (purge_required || enforce_traversal_for_usage_collection)
       {
-         // Make a sorted map of file paths sorted by access time.
+         // Make a map of file paths, sorted by access time.
 
          if (m_configuration.is_age_based_purge_in_effect())
          {
@@ -369,18 +168,11 @@ void Cache::Purge()
             purgeState.setUVKeepMinTime(time(0) - m_configuration.m_cs_UVKeep);
          }
 
-         XrdOssDF* dh = m_oss->newDir(m_configuration.m_username.c_str());
-         if (dh->Opendir("/", env) == XrdOssOK)
-         {
-            purgeState.begin_traversal(m_fs_state->get_root());
-
-            purgeState.TraverseNamespace(dh);
-
-            purgeState.end_traversal();
-
-            dh->Close();
+         bool scan_ok = purgeState.TraverseNamespace("/");
+         if ( ! scan_ok) {
+            TRACE(Error, trc_pfx << "namespace traversal failed at top-directory, this should not happen.");
+            // XXX once this runs in a job / independent thread, stop processing.
          }
-         delete dh; dh = 0;
 
          estimated_file_usage = purgeState.getNBytesTotal();
 
@@ -431,9 +223,9 @@ void Cache::Purge()
       /////////////////////////////////////////////////////////////
       if (m_purge_pin)
       {
-         // set dir stat for each path and calculate nBytes to rocover for each path
+         // set dir stat for each path and calculate nBytes to recover for each path
          // return total bytes to recover within the plugin
-         long long clearVal = m_purge_pin->GetBytesToRecover(m_fs_state->get_root());
+         long long clearVal = m_purge_pin->GetBytesToRecover(nullptr); // m_fs_state->get_root());
          if (clearVal)
          {
             TRACE(Debug, "PurgePin remove total " << clearVal << " bytes");
@@ -442,15 +234,11 @@ void Cache::Purge()
             for (PurgePin::list_i ppit = dpl.begin(); ppit != dpl.end(); ++ppit)
             {
                TRACE(Debug, "\tPurgePin scanning dir " << ppit->path.c_str() << " to remove " << ppit->nBytesToRecover << " bytes");
-               XrdOssDF *ldh = m_oss->newDir(m_configuration.m_username.c_str());
+
                FPurgeState fps(ppit->nBytesToRecover, *m_oss);
-               if (ldh->Opendir(ppit->path.c_str(), env) == XrdOssOK)
-               {
-                  DirState *lds = ppit->dirState;
-                  fps.begin_traversal(lds);
-                  fps.TraverseNamespace(ldh);
-                  fps.end_traversal();
-                  ldh->Close();
+               bool scan_ok = fps.TraverseNamespace(ppit->path.c_str());
+               if ( ! scan_ok) {
+                  continue;
                }
 
                // fill central map from the plugin entry
@@ -471,18 +259,10 @@ void Cache::Purge()
       ///
       /////////////////////////////////////////////////////////////
 
-      // Dump statistcs before actual purging so maximum usage values get recorded.
-      // Should really go to gstream --- and should really go from Heartbeat.
-      if (m_configuration.is_dir_stat_reporting_on())
-      {
-         m_fs_state->dump_recursively();
-      }
-
       if (purge_required)
       {
          // Loop over map and remove files with oldest values of access time.
          struct stat fstat;
-         size_t      info_ext_len  =  strlen(Info::s_infoExtension);
          int         protected_cnt = 0;
          long long   protected_sum = 0;
          for (FPurgeState::map_i it = purgeState.refMap().begin(); it != purgeState.refMap().end(); ++it)
@@ -495,7 +275,7 @@ void Cache::Purge()
             }
 
             std::string &infoPath = it->second.path;
-            std::string  dataPath = infoPath.substr(0, infoPath.size() - info_ext_len);
+            std::string  dataPath = infoPath.substr(0, infoPath.size() - Info::s_infoExtensionLen);
 
             if (IsFileActiveOrPurgeProtected(dataPath))
             {
@@ -528,18 +308,19 @@ void Cache::Purge()
                m_oss->Unlink(dataPath.c_str());
                TRACE(Dump, trc_pfx << "Removed file: '" << dataPath << "' size: " << it->second.nBytes << ", time: " << it->first);
 
+               // XXXXX Report removal in some other way, aggregate by dirname, get DirState from somewhere else:
+               /*
                if (it->second.dirState != 0) // XXXX This should now always be true.
                   it->second.dirState->add_usage_purged(it->second.nBytes);
                else
                   TRACE(Error, trc_pfx << "DirState not set for file '" << dataPath << "'.");
+               */
             }
          }
          if (protected_cnt > 0)
          {
             TRACE(Info, trc_pfx << "Encountered " << protected_cnt << " protected files, sum of their size: " << protected_sum);
          }
-
-         m_fs_state->upward_propagate_usage_purged();
       }
 
       {
@@ -561,5 +342,3 @@ void Cache::Purge()
       }
    }
 }
-
-} // end XrdPfc namespace

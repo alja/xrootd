@@ -41,17 +41,18 @@
 #include "XrdPfcInfo.hh"
 #include "XrdPfcIOFile.hh"
 #include "XrdPfcIOFileBlock.hh"
+#include "XrdPfcResourceMonitor.hh"
 
 using namespace XrdPfc;
 
-Cache * Cache::m_instance = 0;
-
-XrdScheduler *Cache::schedP = 0;
+Cache           *Cache::m_instance = nullptr;
+XrdScheduler    *Cache::schedP = nullptr;
 
 
 void *ResourceMonitorHeartBeatThread(void*)
 {
-   Cache::GetInstance().ResourceMonitorHeartBeat();
+   // Cache::GetInstance().ResourceMonitorHeartBeat();
+   Cache::ResMon().heart_beat();
    return 0;
 }
 
@@ -99,7 +100,7 @@ XrdOucCache *XrdOucGetCache(XrdSysLogger *logger,
       err.Say("Config Proxy file cache initialization failed.");
       return 0;
    }
-   err.Say("------ Proxy file cache initialization completed.");
+   err.Say("++++++ Proxy file cache initialization completed.");
 
    {
       pthread_t tid;
@@ -116,6 +117,8 @@ XrdOucCache *XrdOucGetCache(XrdSysLogger *logger,
 
       XrdSysThread::Run(&tid, ResourceMonitorHeartBeatThread, 0, 0, "XrdPfc ResourceMonitorHeartBeat");
 
+      // XXXX This will be called from ResMon::heart_beat, as and if needed (maybe as XrdJob).
+      //      Now on for testing of the FPurgeState traversal / old-style (default?) purge.
       XrdSysThread::Run(&tid, PurgeThread, 0, 0, "XrdPfc Purge");
    }
 
@@ -156,9 +159,10 @@ Cache &Cache::CreateInstance(XrdSysLogger *logger, XrdOucEnv *env)
    return *m_instance;
 }
 
-      Cache&         Cache::GetInstance() { return *m_instance; }
-const Cache&         Cache::TheOne()      { return *m_instance; }
-const Configuration& Cache::Conf()        { return  m_instance->RefConfiguration(); }
+      Cache&           Cache::GetInstance() { return *m_instance; }
+const Cache&           Cache::TheOne()      { return *m_instance; }
+const Configuration&   Cache::Conf()        { return  m_instance->RefConfiguration(); }
+      ResourceMonitor& Cache::ResMon()      { return  m_instance->RefResMon(); }
 
 bool Cache::Decide(XrdOucCacheIO* io)
 {
@@ -197,12 +201,7 @@ Cache::Cache(XrdSysLogger *logger, XrdOucEnv *env) :
    m_RAM_std_size(0),
    m_isClient(false),
    m_in_purge(false),
-   m_active_cond(0),
-   m_stats_n_purge_cond(0),
-   m_fs_state(0),
-   m_last_scan_duration(0),
-   m_last_purge_duration(0),
-   m_spt_state(SPTS_Idle)
+   m_active_cond(0)
 {
    // Default log level is Warning.
    m_trace->What = 2;
@@ -504,7 +503,24 @@ void Cache::ReleaseFile(File* f, IO* io)
    dec_ref_cnt(f, true);
 }
 
-  
+int Cache::CopyOutActiveStats(std::vector<std::pair<int, Stats>> &store)
+{
+   XrdSysCondVarHelper lock(&m_active_cond);
+   int n = 0;
+   for (ActiveMap_i i = m_active.begin(); i != m_active.end(); ++i)
+   {
+      File *f = i->second;
+      if (f != 0) {
+         store.emplace_back(std::make_pair(f->GetResMonToken(), f->DeltaStatsFromLastCall()));
+         ++n;
+      }
+   }
+   return n;
+}
+
+
+//==============================================================================
+
 namespace
 {
 
@@ -627,6 +643,7 @@ void Cache::dec_ref_cnt(File* f, bool high_debug)
       }
    }
 
+   bool finished_p = false;
    {
       XrdSysCondVarHelper lock(&m_active_cond);
 
@@ -637,37 +654,40 @@ void Cache::dec_ref_cnt(File* f, bool high_debug)
          ActiveMap_i it = m_active.find(f->GetLocalPath());
          m_active.erase(it);
 
-         m_closed_files_stats.insert(std::make_pair(f->GetLocalPath(), f->DeltaStatsFromLastCall()));
-
-         if (m_gstream)
-         {
-            const Stats       &st = f->RefStats();
-            const Info::AStat *as = f->GetLastAccessStats();
-
-            char buf[4096];
-            int  len = snprintf(buf, 4096, "{\"event\":\"file_close\","
-                                 "\"lfn\":\"%s\",\"size\":%lld,\"blk_size\":%d,\"n_blks\":%d,\"n_blks_done\":%d,"
-                                 "\"access_cnt\":%lu,\"attach_t\":%lld,\"detach_t\":%lld,\"remotes\":%s,"
-                                 "\"b_hit\":%lld,\"b_miss\":%lld,\"b_bypass\":%lld,\"n_cks_errs\":%d}",
-                                 f->GetLocalPath().c_str(), f->GetFileSize(), f->GetBlockSize(),
-                                 f->GetNBlocks(), f->GetNDownloadedBlocks(),
-                                 (unsigned long) f->GetAccessCnt(), (long long) as->AttachTime, (long long) as->DetachTime,
-                                 f->GetRemoteLocations().c_str(),
-                                 as->BytesHit, as->BytesMissed, as->BytesBypassed, st.m_NCksumErrors
-            );
-            bool suc = false;
-            if (len < 4096)
-            {
-               suc = m_gstream->Insert(buf, len + 1);
-            }
-            if ( ! suc)
-            {
-               TRACE(Error, "Failed g-stream insertion of file_close record, len=" << len);
-            }
-         }
-
-         delete f;
+         finished_p = true;
       }
+   }
+
+   if (finished_p)
+   {
+      if (m_gstream)
+      {
+         const Stats       &st = f->RefStats();
+         const Info::AStat *as = f->GetLastAccessStats();
+
+         char buf[4096];
+         int  len = snprintf(buf, 4096, "{\"event\":\"file_close\","
+                              "\"lfn\":\"%s\",\"size\":%lld,\"blk_size\":%d,\"n_blks\":%d,\"n_blks_done\":%d,"
+                              "\"access_cnt\":%lu,\"attach_t\":%lld,\"detach_t\":%lld,\"remotes\":%s,"
+                              "\"b_hit\":%lld,\"b_miss\":%lld,\"b_bypass\":%lld,\"n_cks_errs\":%d}",
+                              f->GetLocalPath().c_str(), f->GetFileSize(), f->GetBlockSize(),
+                              f->GetNBlocks(), f->GetNDownloadedBlocks(),
+                              (unsigned long) f->GetAccessCnt(), (long long) as->AttachTime, (long long) as->DetachTime,
+                              f->GetRemoteLocations().c_str(),
+                              as->BytesHit, as->BytesMissed, as->BytesBypassed, st.m_NCksumErrors
+         );
+         bool suc = false;
+         if (len < 4096)
+         {
+            suc = m_gstream->Insert(buf, len + 1);
+         }
+         if ( ! suc)
+         {
+            TRACE(Error, "Failed g-stream insertion of file_close record, len=" << len);
+         }
+      }
+
+      delete f;
    }
 }
 
@@ -1021,6 +1041,7 @@ int Cache::Unlink(const char *curl)
 
 int Cache::UnlinkFile(const std::string& f_name, bool fail_if_open)
 {
+   static const char* trc_pfx = "UnlinkFile ";
    ActiveMap_i  it;
    File        *file = 0;
    {
@@ -1032,7 +1053,7 @@ int Cache::UnlinkFile(const std::string& f_name, bool fail_if_open)
       {
          if (fail_if_open)
          {
-            TRACE(Info, "UnlinkCommon " << f_name << ", file currently open and force not requested - denying request");
+            TRACE(Info, trc_pfx << f_name << ", file currently open and force not requested - denying request");
             return -EBUSY;
          }
 
@@ -1040,7 +1061,7 @@ int Cache::UnlinkFile(const std::string& f_name, bool fail_if_open)
          // Attach() with possible File::Open(). Ask for retry.
          if (it->second == 0)
          {
-            TRACE(Info, "UnlinkCommon " << f_name << ", an operation on this file is ongoing - denying request");
+            TRACE(Info, trc_pfx << f_name << ", an operation on this file is ongoing - denying request");
             return -EAGAIN;
          }
 
@@ -1062,10 +1083,15 @@ int Cache::UnlinkFile(const std::string& f_name, bool fail_if_open)
    std::string i_name = f_name + Info::s_infoExtension;
 
    // Unlink file & cinfo
+   struct stat f_stat;
+   bool stat_ok = (m_oss->Stat(f_name.c_str(), &f_stat) == XrdOssOK);
    int f_ret = m_oss->Unlink(f_name.c_str());
    int i_ret = m_oss->Unlink(i_name.c_str());
 
-   TRACE(Debug, "UnlinkCommon " << f_name << ", f_ret=" << f_ret << ", i_ret=" << i_ret);
+   if (stat_ok)
+      m_res_mon->register_file_purge(f_name, f_stat.st_blocks * 512);
+
+   TRACE(Debug, trc_pfx << f_name << ", f_ret=" << f_ret << ", i_ret=" << i_ret);
 
    {
       XrdSysCondVarHelper lock(&m_active_cond);

@@ -18,12 +18,11 @@
 
 
 #include "XrdPfcFile.hh"
+#include "XrdPfc.hh"
+#include "XrdPfcResourceMonitor.hh"
 #include "XrdPfcIO.hh"
 #include "XrdPfcTrace.hh"
-#include <cstdio>
-#include <sstream>
-#include <fcntl.h>
-#include <assert.h>
+
 #include "XrdCl/XrdClLog.hh"
 #include "XrdCl/XrdClConstants.hh"
 #include "XrdCl/XrdClFile.hh"
@@ -32,7 +31,11 @@
 #include "XrdOss/XrdOss.hh"
 #include "XrdOuc/XrdOucEnv.hh"
 #include "XrdSfs/XrdSfsInterface.hh"
-#include "XrdPfc.hh"
+
+#include <cstdio>
+#include <sstream>
+#include <fcntl.h>
+#include <cassert>
 
 
 using namespace XrdPfc;
@@ -67,6 +70,7 @@ File::File(const std::string& path, long long iOffset, long long iFileSize) :
    m_state_cond(0),
    m_block_size(0),
    m_num_blocks(0),
+   m_resmon_token(-1),
    m_prefetch_state(kOff),
    m_prefetch_read_cnt(0),
    m_prefetch_hit_cnt(0),
@@ -89,6 +93,10 @@ File::~File()
       m_data_file->Close();
       delete m_data_file;
       m_data_file = NULL;
+   }
+
+   if (m_resmon_token >= 0) {
+      Cache::ResMon().register_file_close(m_resmon_token, DeltaStatsFromLastCall(), time(0));
    }
 
    TRACEF(Debug, "~File() ended, prefetch score = " <<  m_prefetch_score);
@@ -134,21 +142,21 @@ void File::initiate_emergency_shutdown()
          cache()->DeRegisterPrefetchFile(this);
       }
    }
-
 }
 
 //------------------------------------------------------------------------------
 
 Stats File::DeltaStatsFromLastCall()
 {
-   // Not locked, only used from Cache / Purge thread.
+   // Used for ResourceMonitor thread.
 
-   Stats delta = m_last_stats;
-
-   m_last_stats = m_stats.Clone();
-
+   Stats delta;
+   {
+      XrdSysCondVarHelper _lck(m_state_cond);
+      delta = m_last_stats;
+      m_last_stats = m_stats;
+   }
    delta.DeltaToReference(m_last_stats);
-
    return delta;
 }
 
@@ -278,8 +286,7 @@ bool File::FinalizeSyncBeforeExit()
    {
      if ( ! m_writes_during_sync.empty() || m_non_flushed_cnt > 0 || ! m_detach_time_logged)
      {
-       Stats loc_stats = m_stats.Clone();
-       m_cfi.WriteIOStatDetach(loc_stats);
+       m_cfi.WriteIOStatDetach(m_stats);
        m_detach_time_logged = true;
        m_in_sync            = true;
        TRACEF(Debug, "FinalizeSyncBeforeExit requesting sync to write detach stats");
@@ -481,6 +488,9 @@ bool File::Open()
    m_block_size = m_cfi.GetBufferSize();
    m_num_blocks = m_cfi.GetNBlocks();
    m_prefetch_state = (m_cfi.IsComplete()) ? kComplete : kStopped; // Will engage in AddIO().
+   m_resmon_token = Cache::ResMon().register_file_open(m_filename, time(0));
+   // XXXX have some reporting counter that will trigger inter open stat reporting???
+   // Or keep pull mode? Hmmh, requires Cache::active_cond lock ... and can desync with close.
    m_state_cond.UnLock();
 
    return true;
@@ -660,7 +670,10 @@ int File::Read(IO *io, char* iUserBuff, long long iUserOff, int iUserSize, ReadR
    {
       m_state_cond.UnLock();
       int ret = m_data_file->Read(iUserBuff, iUserOff, iUserSize);
-      if (ret > 0) m_stats.AddBytesHit(ret);
+      if (ret > 0) {
+         XrdSysCondVarHelper _lck(m_state_cond);
+         m_stats.AddBytesHit(ret);
+      }
       return ret;
    }
 
@@ -689,7 +702,10 @@ int File::ReadV(IO *io, const XrdOucIOVec *readV, int readVnum, ReadReqRH *rh)
    {
       m_state_cond.UnLock();
       int ret = m_data_file->ReadV(const_cast<XrdOucIOVec*>(readV), readVnum);
-      if (ret > 0) m_stats.AddBytesHit(ret);
+      if (ret > 0) {
+         XrdSysCondVarHelper _lck(m_state_cond);
+         m_stats.AddBytesHit(ret);
+      }
       return ret;
    }
 
@@ -906,9 +922,9 @@ int File::ReadOpusCoalescere(IO *io, const XrdOucIOVec *readV, int readVnum,
       if (read_req->is_complete())
       {
          // Almost like FinalizeReadRequest(read_req) -- but no callout!
-         m_state_cond.UnLock();
-
          m_stats.AddReadStats(read_req->m_stats);
+
+         m_state_cond.UnLock();
 
          int ret = read_req->return_value();
          delete read_req;
@@ -1027,7 +1043,11 @@ void File::Sync()
    bool errorp = false;
    if (ret == XrdOssOK)
    {
-      Stats loc_stats = m_stats.Clone();
+      Stats loc_stats;
+      {
+         XrdSysCondVarHelper _lck(&m_state_cond);
+         loc_stats = m_stats;
+      }
       m_cfi.WriteIOStat(loc_stats);
       m_cfi.Write(m_info_file, m_filename.c_str());
       int cret = m_info_file->Fsync();
@@ -1241,8 +1261,10 @@ void File::FinalizeReadRequest(ReadRequest *rreq)
 {
    // called from ProcessBlockResponse()
    // NOT under lock -- does callout
-
-   m_stats.AddReadStats(rreq->m_stats);
+   {
+      XrdSysCondVarHelper _lck(m_state_cond);
+      m_stats.AddReadStats(rreq->m_stats);
+   }
 
    rreq->m_rh->Done(rreq->return_value());
    delete rreq;

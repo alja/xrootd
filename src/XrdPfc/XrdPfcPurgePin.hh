@@ -18,8 +18,10 @@ public:
    {
       std::string path;
       long long nBytesQuota{0};
-      DirState *dirState{nullptr}; // currently cached and shared within the purge thread
       long long nBytesToRecover{0};
+
+      // internal use by the Cache purge thread. to be revisited, maybe an access token is more appropriate.
+      DirState *dirState{nullptr};
    };
 
    typedef std::vector<DirInfo> list_t;
@@ -34,7 +36,9 @@ public:
    //---------------------------------------------------------------------
    //! Provide erase information from directory statistics
    //!
-   //! @param & XrdPfcDirState
+   //! @param & XrdPfc::DirState vector, exported from the tree version.
+   //          To be revisited -- can have a multi-step approach where
+   //          cache periodically sends udates.
    //!
    //! @return total number of bytes
    //---------------------------------------------------------------------

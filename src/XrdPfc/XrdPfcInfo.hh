@@ -18,14 +18,14 @@
 // along with XRootD.  If not, see <http://www.gnu.org/licenses/>.
 //----------------------------------------------------------------------------------
 
-#include <cstdio>
-#include <ctime>
-#include <assert.h>
-#include <vector>
+#include "XrdPfcTypes.hh"
 
 #include "XrdSys/XrdSysPthread.hh"
 
-#include "XrdPfcTypes.hh"
+#include <cstdio>
+#include <ctime>
+#include <cassert>
+#include <vector>
 
 class XrdOssDF;
 class XrdCksCalc;

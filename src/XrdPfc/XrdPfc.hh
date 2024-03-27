@@ -31,6 +31,7 @@
 #include "XrdPfcFile.hh"
 #include "XrdPfcDecision.hh"
 
+class XrdOss;
 class XrdOucStream;
 class XrdSysError;
 class XrdSysTrace;
@@ -42,6 +43,7 @@ class File;
 class IO;
 class PurgePin;
 class DataFsState;
+class ResourceMonitor;
 }
 
 
@@ -129,128 +131,6 @@ struct TmpConfiguration
    {}
 };
 
-//==============================================================================
-
-struct SplitParser
-{
-   char       *f_str;
-   const char *f_delim;
-   char       *f_state;
-   bool        f_first;
-
-   SplitParser(const std::string &s, const char *d) :
-      f_str(strdup(s.c_str())), f_delim(d), f_state(0), f_first(true)
-   {}
-   ~SplitParser() { free(f_str); }
-
-   char* get_token()
-   {
-      if (f_first) { f_first = false; return strtok_r(f_str, f_delim, &f_state); }
-      else         { return strtok_r(0, f_delim, &f_state); }
-   }
-
-   char* get_reminder_with_delim()
-   {
-      if (f_first) { return f_str; }
-      else         { *(f_state - 1) = f_delim[0]; return f_state - 1; }
-   }
-
-   char *get_reminder()
-   {
-      return f_first ? f_str : f_state;
-   }
-
-   int fill_argv(std::vector<char*> &argv)
-   {
-      if (!f_first) return 0;
-      int dcnt = 0; { char *p = f_str; while (*p) { if (*(p++) == f_delim[0]) ++dcnt; } }
-      argv.reserve(dcnt + 1);
-      int argc = 0;
-      char *i = strtok_r(f_str, f_delim, &f_state);
-      while (i)
-      {
-         ++argc;
-         argv.push_back(i);
-         // printf("  arg %d : '%s'\n", argc, i);
-         i = strtok_r(0, f_delim, &f_state);
-      }
-      return argc;
-   }
-};
-
-struct PathTokenizer : private SplitParser
-{
-   std::vector<const char*>  m_dirs;
-   const char               *m_reminder;
-   int                       m_n_dirs;
-
-   PathTokenizer(const std::string &path, int max_depth, bool parse_as_lfn) :
-      SplitParser(path, "/"),
-      m_reminder (0),
-      m_n_dirs   (0)
-   {
-      // If parse_as_lfn is true store final token into m_reminder, regardless of maxdepth.
-      // This assumes the last token is a file name (and full path is lfn, including the file name).
-
-      m_dirs.reserve(max_depth);
-
-      char *t = 0;
-      for (int i = 0; i < max_depth; ++i)
-      {
-         t = get_token();
-         if (t == 0) break;
-         m_dirs.emplace_back(t);
-      }
-      if (parse_as_lfn && *get_reminder() == 0 && ! m_dirs.empty())
-      {
-         m_reminder = m_dirs.back();
-         m_dirs.pop_back();
-      }
-      else
-      {
-         m_reminder = get_reminder();
-      }
-      m_n_dirs = (int) m_dirs.size();
-   }
-
-   int get_n_dirs()
-   {
-      return m_n_dirs;
-   }
-
-   const char *get_dir(int pos)
-   {
-      if (pos >= m_n_dirs) return 0;
-      return m_dirs[pos];
-   }
-
-   std::string make_path()
-   {
-      std::string res;
-      for (std::vector<const char*>::iterator i = m_dirs.begin(); i != m_dirs.end(); ++i)
-      {
-         res += "/";
-         res += *i;
-      }
-      if (m_reminder != 0)
-      {
-         res += "/";
-         res += m_reminder;
-      }
-      return res;
-   }
-
-   void deboog()
-   {
-      printf("PathTokenizer::deboog size=%d\n", m_n_dirs);
-      for (int i = 0; i < m_n_dirs; ++i)
-      {
-         printf("   %2d: %s\n", i, m_dirs[i]);
-      }
-      printf("  rem: %s\n", m_reminder);
-   }
-};
-
 
 //==============================================================================
 // Cache
@@ -326,15 +206,12 @@ public:
    static const Cache         &TheOne();
    static const Configuration &Conf();
 
+   static ResourceMonitor     &ResMon();
+
    //---------------------------------------------------------------------
    //! Version check.
    //---------------------------------------------------------------------
    static bool VCheck(XrdVersionInfo &urVersion) { return true; }
-
-   //---------------------------------------------------------------------
-   //! Thread function checking resource usage periodically.
-   //---------------------------------------------------------------------
-   void ResourceMonitorHeartBeat();
 
    //---------------------------------------------------------------------
    //! Thread function invoked to scan and purge files from disk when needed.
@@ -387,7 +264,11 @@ public:
    XrdSysError* GetLog()   { return &m_log;  }
    XrdSysTrace* GetTrace() { return m_trace; }
 
+   ResourceMonitor& RefResMon() { return *m_res_mon; }
    XrdXrootdGStream* GetGStream() { return m_gstream; }
+
+   int CopyOutActiveStats(std::vector<std::pair<int, Stats>> &store);
+
 
    void ExecuteCommandUrl(const std::string& command_url);
 
@@ -403,7 +284,7 @@ private:
 
    bool cfg2bytes(const std::string &str, long long &store, long long totalSpace, const char *name);
 
-   static Cache     *m_instance;        //!< this object
+   static Cache           *m_instance;  //!< this object
 
    XrdOucEnv        *m_env;             //!< environment passed in at creation
    XrdSysError       m_log;             //!< XrdPfc namespace logger
@@ -413,6 +294,8 @@ private:
    XrdOss           *m_oss;             //!< disk cache file system
 
    XrdXrootdGStream *m_gstream;
+
+   ResourceMonitor  *m_res_mon;
 
    std::vector<XrdPfc::Decision*> m_decisionpoints;       //!< decision plugins
    XrdPfc::PurgePin*  m_purge_pin;           //!< purge plugin
@@ -445,12 +328,9 @@ private:
    // active map, purge delay set
    typedef std::map<std::string, File*>               ActiveMap_t;
    typedef ActiveMap_t::iterator                      ActiveMap_i;
-   typedef std::multimap<std::string, XrdPfc::Stats>  StatsMMap_t;
-   typedef StatsMMap_t::iterator                      StatsMMap_i;
    typedef std::set<std::string>                      FNameSet_t;
 
    ActiveMap_t      m_active;             //!< Map of currently active / open files.
-   StatsMMap_t      m_closed_files_stats;
    FNameSet_t       m_purge_delay_set;
    bool             m_in_purge;
    XrdSysCondVar    m_active_cond;        //!< Cond-var protecting active file data structures.
@@ -463,21 +343,6 @@ private:
    // prefetching
    typedef std::vector<File*>  PrefetchList;
    PrefetchList m_prefetchList;
-
-   //---------------------------------------------------------------------------
-   // Statistics, heart-beat, scan-and-purge
-
-   enum ScanAndPurgeThreadState_e { SPTS_Idle, SPTS_Scan, SPTS_Purge, SPTS_Done };
-
-   XrdSysCondVar    m_stats_n_purge_cond; //!< communication between heart-beat and scan-purge threads
-
-   DataFsState     *m_fs_state;           //!< directory state for access / usage info and quotas
-
-   int                       m_last_scan_duration;
-   int                       m_last_purge_duration;
-   ScanAndPurgeThreadState_e m_spt_state;
-
-   void copy_out_active_stats_and_update_data_fs_state();
 };
 
 }

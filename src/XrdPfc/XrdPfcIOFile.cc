@@ -16,19 +16,20 @@
 // along with XRootD.  If not, see <http://www.gnu.org/licenses/>.
 //----------------------------------------------------------------------------------
 
-#include <cstdio>
-#include <fcntl.h>
-
-#include "XrdSys/XrdSysError.hh"
-#include "XrdSfs/XrdSfsInterface.hh"
-#include "XrdSys/XrdSysPthread.hh"
-
 #include "XrdPfcIOFile.hh"
 #include "XrdPfcStats.hh"
 #include "XrdPfcTrace.hh"
 
+#include "XrdOss/XrdOss.hh"
+#include "XrdSfs/XrdSfsInterface.hh"
+#include "XrdSys/XrdSysError.hh"
+#include "XrdSys/XrdSysPthread.hh"
+
 #include "XrdOuc/XrdOucEnv.hh"
 #include "XrdOuc/XrdOucPgrwUtils.hh"
+
+#include <cstdio>
+#include <fcntl.h>
 
 using namespace XrdPfc;
 

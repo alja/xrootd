@@ -23,6 +23,10 @@ add_library(
   XrdPfc/XrdPfcDirState.cc      XrdPfc/XrdPfcDirState.hh
   XrdPfc/XrdPfcFPurgeState.cc   XrdPfc/XrdPfcFPurgeState.hh
   XrdPfc/XrdPfcPurge.cc
+  XrdPfc/XrdPfcPurgePin.hh
+  XrdPfc/XrdPfcResourceMonitor.cc XrdPfc/XrdPfcResourceMonitor.hh
+  XrdPfc/XrdPfcPathParseTools.hh
+  XrdPfc/XrdPfcFsTraversal.cc   XrdPfc/XrdPfcFsTraversal.hh
   XrdPfc/XrdPfcCommand.cc
   XrdPfc/XrdPfcFile.cc          XrdPfc/XrdPfcFile.hh
   XrdPfc/XrdPfcFSctl.cc         XrdPfc/XrdPfcFSctl.hh

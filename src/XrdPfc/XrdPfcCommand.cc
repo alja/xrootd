@@ -19,6 +19,8 @@
 #include "XrdPfcInfo.hh"
 #include "XrdPfc.hh"
 #include "XrdPfcTrace.hh"
+#include "XrdPfcPathParseTools.hh"
+#include "XrdPfcResourceMonitor.hh"
 
 #include "XrdOfs/XrdOfsConfigPI.hh"
 #include "XrdOss/XrdOss.hh"
@@ -245,6 +247,15 @@ void Cache::ExecuteCommandUrl(const std::string& command_url)
 
          myInfo.Write(myInfoFile, cinfo_path.c_str());
 
+         // Fake last modified time to the last access_time
+         {
+            time_t last_detach;
+            myInfo.GetLatestDetachTime(last_detach);
+            struct timespec acc_mod_time[2] = { {last_detach, UTIME_OMIT}, {last_detach, 0} };
+
+            futimens(myInfoFile->getFD(), acc_mod_time);
+         }
+
          myInfoFile->Close(); delete myInfoFile;
          myFile->Close();     delete myFile;
 
@@ -256,11 +267,10 @@ void Cache::ExecuteCommandUrl(const std::string& command_url)
             m_writeQ.writes_between_purges += file_size;
          }
          {
-            XrdSysCondVarHelper lock(&m_active_cond);
-
+            int token = m_res_mon->register_file_open(file_path, time_now);
             XrdPfc::Stats stats;
             stats.m_BytesWritten = file_size;
-            m_closed_files_stats.insert({file_path, stats});
+            m_res_mon->register_file_close(token, stats, time(0));
          }
       }
    }

@@ -21,7 +21,7 @@ public:
     {
         for (list_i it = m_list.begin(); it != m_list.end(); ++it)
         {
-            it->dirState = rootDS->find_path(it->path, Cache::Conf().m_dirStatsStoreDepth, false, false);
+            it->dirState = rootDS->find_path(it->path, XrdPfc::Cache::Conf().m_dirStatsStoreDepth, false, false);
         }
     }
 
@@ -37,7 +37,8 @@ public:
         // get bytes to remove
         for (list_i it = m_list.begin(); it != m_list.end(); ++it)
         {
-            long long cv = it->dirState->get_usage() - it->nBytesQuota;
+            // XXXXXX here we should have another mechanism. and probably add up here + subdirs
+            long long cv = it->dirState->m_recursive_subdir_usage.m_bytes_on_disk - it->nBytesQuota;
             if (cv > 0)
                 it->nBytesToRecover = cv;
             else
@@ -54,7 +55,7 @@ public:
     //----------------------------------------------------------------------------
     virtual bool ConfigPurgePin(const char *parms)
     {
-        XrdSysError *log = Cache::GetInstance().GetLog();
+        XrdSysError *log = XrdPfc::Cache::GetInstance().GetLog();
          
         // retrive configuration file name
         if (!parms || !parms[0] || (strlen(parms) == 0))

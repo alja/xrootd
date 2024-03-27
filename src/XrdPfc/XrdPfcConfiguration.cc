@@ -2,6 +2,7 @@
 #include "XrdPfcTrace.hh"
 #include "XrdPfcInfo.hh"
 
+#include "XrdPfcResourceMonitor.hh"
 #include "XrdPfcPurgePin.hh"
 
 #include "XrdOss/XrdOss.hh"
@@ -547,7 +548,7 @@ bool Cache::Config(const char *config_filename, const char *parameters)
                       "       pfc.spaces %s %s\n"
                       "       pfc.trace %d\n"
                       "       pfc.flush %lld\n"
-                      "       pfc.acchistorysize %d\n",
+                      "       pfc.acchistorysize %d",
                       config_filename,
                       csc[int(m_configuration.m_cs_Chk)], uvk,
                       m_configuration.m_bufferSize,
@@ -605,9 +606,18 @@ bool Cache::Config(const char *config_filename, const char *parameters)
 
    m_gstream = (XrdXrootdGStream*) m_env->GetPtr("pfc.gStream*");
 
-   m_log.Say("Config Proxy File Cache g-stream has", m_gstream ? "" : " NOT", " been configured via xrootd.monitor directive");
+   m_log.Say("       pfc g-stream has", m_gstream ? "" : " NOT", " been configured via xrootd.monitor directive\n");
 
-   m_log.Say("------ Proxy File Cache configuration parsing ", aOK ? "completed" : "failed");
+   // Create the ResourceMonitor object and perform initial scan.
+   if (aOK)
+   {
+      m_log.Say("-----> Proxy file cache performing initial directory scan");
+      m_res_mon = new ResourceMonitor(*m_oss);
+      aOK = m_res_mon->perform_initial_scan();
+      m_log.Say("-----> Proxy File Cache initial directory scan finished");
+   }
+
+   m_log.Say("=====> Proxy file cache configuration parsing ", aOK ? "completed" : "failed");
 
    if (ofsCfg) delete ofsCfg;
 
