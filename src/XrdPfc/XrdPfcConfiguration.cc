@@ -248,7 +248,7 @@ bool Cache::xplib(XrdOucStream &Config)
    std::string libp;
    if (! (val = Config.GetWord()) || ! val[0])
    {
-      TRACE(Info," Cache::Config() decisionlib not specified; always caching files");
+      TRACE(Info," Cache::Config() purgelib not specified; will use LRU for purging files");
       return true;
    }
    else
@@ -272,7 +272,7 @@ bool Cache::xplib(XrdOucStream &Config)
    PurgePin * dp = ep(m_log);
    if (! dp)
    {
-      TRACE(Error, "Config() decisionlib was not able to create a directory purge object");
+      TRACE(Error, "Config() purgelib was not able to create a Purge Plugin object?");
       return false;
    }
    m_purge_pin = dp;

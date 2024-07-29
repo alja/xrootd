@@ -105,6 +105,19 @@ install(
       WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR} )" )
 
 install(
+  FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/XrdPfc/XrdPfcPurgePin.hh
+    ${CMAKE_CURRENT_SOURCE_DIR}/XrdPfc/XrdPfcDirStateSnapshot.hh
+    ${CMAKE_CURRENT_SOURCE_DIR}/XrdPfc/XrdPfcDirState.hh
+    ${CMAKE_CURRENT_SOURCE_DIR}/XrdPfc/XrdPfcStats.hh
+    ${CMAKE_CURRENT_SOURCE_DIR}/XrdPfc/XrdPfc.hh
+    ${CMAKE_CURRENT_SOURCE_DIR}/XrdPfc/XrdPfcFile.hh
+    ${CMAKE_CURRENT_SOURCE_DIR}/XrdPfc/XrdPfcTypes.hh
+    ${CMAKE_CURRENT_SOURCE_DIR}/XrdPfc/XrdPfcInfo.hh
+  DESTINATION ${CMAKE_INSTALL_PREFIX}/include/xrootd/XrdPfc
+)
+
+install(
   TARGETS ${LIB_XRD_BLACKLIST}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} )
 
