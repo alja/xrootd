@@ -195,6 +195,19 @@ public:
       m_NDirectoriesCreated += s.m_NDirectoriesCreated;
       m_NDirectoriesRemoved += s.m_NDirectoriesRemoved;
    }
+
+   using Stats::Reset; // activate overload based on arg
+   void Reset()
+   {
+      Stats::Reset();
+      m_StBlocksRemoved     = 0;
+      m_NFilesOpened        = 0;
+      m_NFilesClosed        = 0;
+      m_NFilesCreated       = 0;
+      m_NFilesRemoved       = 0;
+      m_NDirectoriesCreated = 0;
+      m_NDirectoriesRemoved = 0;
+   }
 };
 
 }
