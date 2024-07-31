@@ -491,6 +491,13 @@ bool Cache::Config(const char *config_filename, const char *parameters)
             m_log.Emsg("ConfigParameters()", "pfc.diskusage files should have baseline < nominal < max.");
             aOK = false;
           }
+
+
+         if (aOK && m_configuration.m_fileUsageMax >= m_configuration.m_diskUsageLWM)
+         {
+            m_log.Emsg("ConfigParameters()", "pfc.diskusage files values must be below lowWatermark");
+            aOK = false;
+         }
         }
         else aOK = false;
       }
