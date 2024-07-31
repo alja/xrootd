@@ -54,7 +54,7 @@ bool FsTraversal::begin_traversal(const char *root_path)
 {
    static const char *trc_pfx = "FsTraversal::begin_traversal ";
 
-   assert(root_path && strlen(root_path) > 0 && root_path[strlen(root_path) - 1] == '/');
+   assert(root_path && strlen(root_path) > 0 && root_path[0] == '/');
 
    m_rel_dir_level = 0;
    m_current_path = root_path;
