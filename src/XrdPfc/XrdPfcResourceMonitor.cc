@@ -564,7 +564,7 @@ long long ResourceMonitor::get_file_usage_bytes_to_remove(const DataFsPurgeshot 
 
    // get file usage increase from the previous time interval check 
    long long delta = write_estimate;
-   TRACE_INT(tl, "File usage increased since revious purge interval " << delta );
+   TRACE_INT(tl, "file usage increased since the previous purge interval in bytes: " << delta );
 
    long long bytes_to_remove = 0;
 
