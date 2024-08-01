@@ -427,6 +427,8 @@ void ResourceMonitor::heart_beat()
 
             m_fs_state.dump_recursively(store_depth);
 
+            /*
+            // json dump to std::out for debug purpose
             DataFsSnapshot ss(m_fs_state);
             ss.m_dir_states.reserve(n_sshot_dirs);
 
@@ -435,6 +437,7 @@ void ResourceMonitor::heart_beat()
 
             // This should really be export to a file (preferably binary, but then bin->json command is needed, too).
             ss.dump();
+            */
          }
 
          m_fs_state.reset_stats();
@@ -544,6 +547,115 @@ void ResourceMonitor::update_vs_and_file_usage_info()
    m_fs_state.m_meta_used  = vsi.Total - vsi.Free;
 }
 
+long long ResourceMonitor::get_file_usage_bytes_to_remove(const DataFsPurgeshot &ps, long long write_estimate, int tl)
+{
+   // short names from config values
+   const Configuration &conf = Cache::Conf();
+   long long f0 = conf.m_fileUsageBaseline;
+   long long f1 = conf.m_fileUsageNominal;
+   long long f2 = conf.m_fileUsageMax;
+   long long w1 = conf.m_diskUsageLWM;
+   long long w2 = conf.m_diskUsageHWM;
+
+   // get usage from purge snapshot
+   long long T = ps.m_disk_total;
+   long long x = ps.m_file_usage;
+   long long u = ps.m_disk_used;
+
+   // get file usage increase from the previous time interval check 
+   long long delta = write_estimate;
+   TRACE_INT(tl, "File usage increased since revious purge interval " << delta );
+
+   long long bytes_to_remove = 0;
+
+   // helper lambda function
+   auto clamp = [&x, &bytes_to_remove](long long lowval, long long highval)
+   {
+      long long val = x;
+      long long newval = val - bytes_to_remove;
+
+      // removed too much
+      if (newval < lowval)
+      {
+         return lowval - val;
+      }
+
+      // removed too little
+      if (newval > highval)
+      {
+         return highval - val;
+      }
+      // keep the original value
+      return bytes_to_remove;
+   };
+
+   // under file quota, nothing to do
+   if (x < f0)
+      return 0;
+
+   // total disk usage exceeds  highWatermark
+   if (u >= w2)
+   {
+      TRACE_INT(tl, "Disk usage: " <<  ps.m_disk_used << " exceed highWatermark " << conf.m_diskUsageHWM);
+      float frac_u = static_cast<float>(u - w2) / (T - w2);
+      float frac_x = static_cast<float>(x - f0) / (f1 - f0);
+
+      if (w2 == T)
+      {
+         bytes_to_remove = u -w1;
+      }
+      else
+      {
+         if (frac_x > frac_u)
+         {
+            // the cache is the reason for going out of w2 range
+            bytes_to_remove = (frac_x - frac_u) * (f1 - f0);
+            bytes_to_remove += delta;
+            bytes_to_remove = clamp(f0, f1);
+         }
+         else
+         {
+            // someone else is filling disk space, go to f1
+            bytes_to_remove = clamp(f0, f2);
+         }
+         return bytes_to_remove;
+      }
+   }
+
+   // file quota and total disk usage is within normal range, check if this space usage is
+   // proportinal to disk usage and correct it
+   if (u > w1 && x > f1)
+   {
+      float frac_u = static_cast<float>(u - w1) / (w2 - w1);
+      float frac_x = static_cast<float>(x - f1) / (f2 - f1);
+      if (frac_x > frac_u)
+      {
+         TRACE_INT(tl, "Disproportional file quota usage comapared to disc usage (frac_x/frac_u) = " << frac_x << "/"<< frac_u);
+         bytes_to_remove = (frac_x - frac_u) * (f2 - f1);
+         bytes_to_remove += delta;
+      }
+
+      // check the new x val will not be below f0
+      bytes_to_remove = clamp(f0, f2);
+      return bytes_to_remove;
+   }
+
+   // final check: disk useage is lower that w1, check if exceed the max file usage f2
+   if (x > f2)
+   {
+      // drop usage to f2
+      // compare with global disk usage in the previous purge cycle (default 300s)
+      // check delta is not overflowing f2, else set numver of bytes to remove according remove to f0
+
+      TRACE_INT(tl, "File usage exceeds maxim file usage. Total disk usage is under lowWatermark. Clearing to low file usage.");
+      long long f2delta = std::max(f2 - delta, f0);
+      bytes_to_remove = clamp(f0, f2delta);
+      return bytes_to_remove;
+   }
+
+   return bytes_to_remove;
+}
+
 void ResourceMonitor::perform_purge_check(bool purge_cold_files, int tl)
 {
    static const char *trc_pfx = "perform_purge_check() ";
@@ -552,37 +664,30 @@ void ResourceMonitor::perform_purge_check(bool purge_cold_files, int tl)
    std::unique_ptr<DataFsPurgeshot> psp( new DataFsPurgeshot(m_fs_state) );
    DataFsPurgeshot &ps = *psp;
 
-   // Purge precheck I. -- available disk space
-
-   if (ps.m_disk_used > conf.m_diskUsageHWM) {
-      ps.m_bytes_to_remove_d = ps.m_disk_used - conf.m_diskUsageLWM;
-      ps.m_space_based_purge = true;
-   }
-
-   // Purge precheck II. -- usage by files.
-   // Keep it updated, but only act on it if so configured.
-
    ps.m_file_usage = 512ll * m_current_usage_in_st_blocks;
    // These are potentially wrong as cache might be writing over preallocated byte ranges.
    ps.m_estimated_writes_from_writeq = Cache::GetInstance().WritesSinceLastCall();
    // Can have another estimate based on eiter writes or st-blocks from purge-stats, once we have them.
+   
+   TRACE_INT(tl, trc_pfx << "Purge check:");
 
+   ps.m_bytes_to_remove = 0;
    if (conf.are_file_usage_limits_set())
    {
-      if (ps.m_space_based_purge )
+      ps.m_bytes_to_remove = get_file_usage_bytes_to_remove(ps, ps.m_estimated_writes_from_writeq, tl);
+   }
+   else
+   {
+      if (ps.m_disk_used > conf.m_diskUsageHWM)
       {
-         ps.m_bytes_to_remove_f = std::max(ps.m_file_usage - conf.m_fileUsageBaseline, 0ll);
-      }
-      else if (ps.m_file_usage > conf.m_fileUsageMax)
-      {
-         ps.m_bytes_to_remove_f = std::max(ps.m_file_usage - conf.m_fileUsageNominal, 0ll);
-         ps.m_space_based_purge = true;
+         TRACE_INT(tl, "Disk usage: " <<  ps.m_disk_used << " exceed highWatermark.");
+         ps.m_bytes_to_remove = ps.m_disk_used - conf.m_diskUsageLWM;
       }
    }
 
-   ps.m_bytes_to_remove = std::max(ps.m_bytes_to_remove_d, ps.m_bytes_to_remove_f);
+   ps.m_space_based_purge = ps.m_bytes_to_remove ? 1 : 0;
 
-   // Purge precheck III. -- check if age-based purge is required
+   // Purge precheck -- check if age-based purge is required
    // We ignore uvkeep time, it requires reading of cinfo files and it is enforced in File::Open() anyway.
 
    if (purge_cold_files && conf.is_age_based_purge_in_effect()) // || conf.is_uvkeep_purge_in_effect())
@@ -590,10 +695,7 @@ void ResourceMonitor::perform_purge_check(bool purge_cold_files, int tl)
       ps.m_age_based_purge = true;
    }
 
-   TRACE_INT(tl, trc_pfx << "Purge check:");
-   TRACE_INT(tl, "\tbytes_to_remove_disk    = " << ps.m_bytes_to_remove_d << " B");
-   TRACE_INT(tl, "\tbytes_to remove_files   = " << ps.m_bytes_to_remove_f << " B");
-   TRACE_INT(tl, "\tbytes_to_remove         = " << ps.m_bytes_to_remove   << " B");
+   TRACE_INT(tl, "\tbytes_to_remove   = " << ps.m_bytes_to_remove   << " B");
    TRACE_INT(tl, "\tspace_based_purge = " << ps.m_space_based_purge);
    TRACE_INT(tl, "\tage_based_purge   = " << ps.m_age_based_purge);
 

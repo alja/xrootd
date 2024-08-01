@@ -66,7 +66,7 @@ struct DirPurgeElement : public DirStateBase
 
 struct DataFsPurgeshot : public DataFsStateBase
 {
-   long long m_bytes_to_remove_d = 0, m_bytes_to_remove_f = 0, m_bytes_to_remove = 0;
+   long long m_bytes_to_remove = 0;
    long long m_estimated_writes_from_writeq = 0;
 
    bool m_space_based_purge = false;

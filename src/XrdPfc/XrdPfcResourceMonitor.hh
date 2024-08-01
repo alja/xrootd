@@ -133,6 +133,7 @@ class ResourceMonitor
 
    void process_inter_dir_scan_open_requests(FsTraversal &fst);
    void cross_check_or_process_oob_lfn(const std::string &lfn, FsTraversal &fst);
+   long long get_file_usage_bytes_to_remove(const DataFsPurgeshot &ps, long long previous_file_usage, int logLeve);
 
 public:
    ResourceMonitor(XrdOss& oss);
