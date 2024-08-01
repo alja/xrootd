@@ -21,87 +21,25 @@ namespace
 namespace XrdPfc
 {
 
-void OldStylePurgeDriver(DataFsPurgeshot &ps)
+long long UnlinkPurgeStateFilesInMap(FPurgeState& purgeState, long long bytes_to_remove, const std::string& root_path)
 {
-   static const char *trc_pfx = "OldStylePurgeDriver ";
+   static const char *trc_pfx = "UnlinkPurgeStateFilesInMap ";
+
+   struct stat fstat;
+   int         protected_cnt = 0;
+   int         deleted_file_count = 0;
+   long long   deleted_st_blocks = 0;
+   long long   protected_st_blocks = 0;
+   long long   st_blocks_to_remove = (bytes_to_remove >> 9) + 1ll;
+   
 
    const auto &cache = Cache::TheOne();
-   const auto &conf  = Cache::Conf();
    auto &resmon = Cache::ResMon();
    auto &oss = *cache.GetOss();
 
-   TRACE(Info, trc_pfx << "Started.");
-   time_t purge_start = time(0);
-
-
-   FPurgeState purgeState(2 * ps.m_bytes_to_remove, oss); // prepare twice more volume than required
-
-   // Make a map of file paths, sorted by access time.
-
-   if (ps.m_age_based_purge)
-   {
-      purgeState.setMinTime(time(0) - conf.m_purgeColdFilesAge);
-   }
-   if (conf.is_uvkeep_purge_in_effect())
-   {
-      purgeState.setUVKeepMinTime(time(0) - conf.m_cs_UVKeep);
-   }
-
-   bool scan_ok = purgeState.TraverseNamespace("/");
-   if ( ! scan_ok) {
-      TRACE(Error, trc_pfx << "namespace traversal failed at top-directory, this should not happen.");
-      return;
-   }
-
-   TRACE(Debug, trc_pfx << "usage measured from cinfo files " << purgeState.getNBytesTotal() << " bytes.");
-
-   purgeState.MoveListEntriesToMap();
-
-   /////////////////////////////////////////////////////////////
-   /// PurgePin begin
-   PurgePin *purge_pin = cache.GetPurgePin();
-   if (purge_pin)
-   {
-      // set dir stat for each path and calculate nBytes to recover for each path
-      // return total bytes to recover within the plugin
-      long long clearVal = purge_pin->GetBytesToRecover(ps);
-      if (clearVal)
-      {
-         TRACE(Debug, "PurgePin remove total " << clearVal << " bytes");
-         PurgePin::list_t &dpl = purge_pin->refDirInfos();
-         // iterate through the plugin paths
-         for (PurgePin::list_i ppit = dpl.begin(); ppit != dpl.end(); ++ppit)
-         {
-            TRACE(Debug, trc_pfx << "PurgePin scanning dir " << ppit->path.c_str() << " to remove " << ppit->nBytesToRecover << " bytes");
-
-            FPurgeState fps(ppit->nBytesToRecover, oss);
-            bool scan_ok = fps.TraverseNamespace(ppit->path.c_str());
-            if ( ! scan_ok) {
-               TRACE(Warning, trc_pfx << "purge-pin scan of directory failed for " << ppit->path);
-               continue;
-            }
-
-            // fill central map from the plugin entry
-            for (FPurgeState::map_i it = fps.refMap().begin(); it != fps.refMap().end(); ++it)
-            {
-               it->second.path = ppit->path + it->second.path;
-               TRACE(Debug, trc_pfx << "PurgePin found file " << it->second.path.c_str()<< " size " << 512ll * it->second.nStBlocks);
-               purgeState.refMap().insert(std::make_pair(0, it->second)); // set atime to zero to make sure this is deleted
-            }
-         }
-      }
-   }
-   /// PurgePin end
-   /////////////////////////////////////////////////////////////
-
-   int deleted_file_count = 0;
-   long long deleted_st_blocks = 0;
+   TRACE(Info, trc_pfx << "Started, root_path = " << root_path << ", bytes_to_remove = " << bytes_to_remove);
 
    // Loop over map and remove files with oldest values of access time.
-   struct stat fstat;
-   int         protected_cnt = 0;
-   long long   protected_st_blocks = 0;
-   long long   st_blocks_to_remove = (ps.m_bytes_to_remove >> 9) + 1ll;
    for (FPurgeState::map_i it = purgeState.refMap().begin(); it != purgeState.refMap().end(); ++it)
    {
       // Finish when enough space has been freed but not while age-based purging is in progress.
@@ -128,6 +66,10 @@ void OldStylePurgeDriver(DataFsPurgeshot &ps)
          oss.Unlink(infoPath.c_str());
          TRACE(Dump, trc_pfx << "Removed file: '" << infoPath << "' size: " << 512ll * fstat.st_size);
       }
+      else
+      {
+         TRACE(Error, trc_pfx << "Can't locate file " << dataPath);
+      }
 
       // remove data file
       if (oss.Stat(dataPath.c_str(), &fstat) == XrdOssOK)
@@ -147,10 +89,95 @@ void OldStylePurgeDriver(DataFsPurgeshot &ps)
       TRACE(Info, trc_pfx << "Encountered " << protected_cnt << " protected files, sum of their size: " << 512ll * protected_st_blocks);
    }
 
-   int purge_duration = time(0) - purge_start;
+   TRACE(Info, trc_pfx << "Finished, removed " << deleted_file_count << " data files, removed total size " << 512ll * deleted_st_blocks)
 
-   TRACE(Info, trc_pfx << "Finished, removed " << deleted_file_count << " data files, removed total size " << 512ll * deleted_st_blocks
-                       << ", purge duration " << purge_duration);
+   return deleted_st_blocks;
+}
+
+// -------------------------------------------------------------------------------------
+
+void OldStylePurgeDriver(DataFsPurgeshot &ps)
+{
+   static const char *trc_pfx = "OldStylePurgeDriver ";
+   const auto &cache = Cache::TheOne();
+   const auto &conf  = Cache::Conf();
+   auto &oss = *cache.GetOss();
+
+   time_t purge_start = time(0);
+   
+   /////////////////////////////////////////////////////////////
+   /// PurgePin 
+   /////////////////////////////////////////////////////////////
+   PurgePin *purge_pin = cache.GetPurgePin();
+   long long std_blocks_removed_by_pin = 0;
+   if (purge_pin)
+   {   
+      // set dir stat for each path and calculate nBytes to recover for each path
+      // return total bytes to recover within the plugin
+      long long clearVal = purge_pin->GetBytesToRecover(ps);
+      if (clearVal)
+      {
+         TRACE(Debug, "PurgePin remove total " << clearVal << " bytes");
+         PurgePin::list_t &dpl = purge_pin->refDirInfos();
+         // iterate through the plugin paths
+         for (PurgePin::list_i ppit = dpl.begin(); ppit != dpl.end(); ++ppit)
+         {
+            TRACE(Debug, trc_pfx << "PurgePin scanning dir " << ppit->path.c_str() << " to remove " << ppit->nBytesToRecover << " bytes");
+
+            FPurgeState fps(ppit->nBytesToRecover, oss);
+            bool scan_ok = fps.TraverseNamespace(ppit->path.c_str());
+            if ( ! scan_ok) {
+               TRACE(Warning, trc_pfx << "purge-pin scan of directory failed for " << ppit->path);
+               continue;
+            } 
+            
+            fps.MoveListEntriesToMap();
+            std_blocks_removed_by_pin += UnlinkPurgeStateFilesInMap(fps, ppit->nBytesToRecover, ppit->path);
+         }
+      }
+   }
+
+   /////////////////////////////////////////////////////////////
+   /// Default purge
+   /////////////////////////////////////////////////////////////
+
+   // check if the default pargue is still needed after purge pin
+   long long pin_removed_bytes = std_blocks_removed_by_pin * 512ll;
+   long long default_purge_blocks_removed = 0;
+   if (ps.m_bytes_to_remove > pin_removed_bytes)
+   {
+      // init default purge
+      long long bytes_to_remove = ps.m_bytes_to_remove - pin_removed_bytes;
+      FPurgeState purgeState(2 * bytes_to_remove, oss); // prepare twice more volume than required
+
+      if (ps.m_age_based_purge)
+      {
+         purgeState.setMinTime(time(0) - conf.m_purgeColdFilesAge);
+      }
+      if (conf.is_uvkeep_purge_in_effect())
+      {
+         purgeState.setUVKeepMinTime(time(0) - conf.m_cs_UVKeep);
+      }
+
+      // Make a map of file paths, sorted by access time.
+      bool scan_ok = purgeState.TraverseNamespace("/");
+      if (!scan_ok)
+      {
+         TRACE(Error, trc_pfx << "default purge namespace traversal failed at top-directory, this should not happen.");
+         return;
+      }
+
+      TRACE(Debug, trc_pfx << "default purge usage measured from cinfo files " << purgeState.getNBytesTotal() << " bytes.");
+
+      purgeState.MoveListEntriesToMap();
+      default_purge_blocks_removed = UnlinkPurgeStateFilesInMap(purgeState, bytes_to_remove, "/");
+   }
+
+   // print the total summary
+   /////////////////////////////////////////////////
+   int purge_duration = time(0) - purge_start;
+   long long total_bytes_removed = (default_purge_blocks_removed + std_blocks_removed_by_pin) * 512ll;
+   TRACE(Info, trc_pfx << "Finished, removed total size " << total_bytes_removed << ", purge duration " << purge_duration);
 }
 
 } // end namespace XrdPfc
