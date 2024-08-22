@@ -5,6 +5,7 @@
 #include "XrdPfcDirState.hh"
 #include "XrdPfcDirStateSnapshot.hh"
 #include "XrdPfcTrace.hh"
+#include "XrdPfcPurgePin.hh"
 
 #include "XrdOss/XrdOss.hh"
 
@@ -699,7 +700,10 @@ void ResourceMonitor::perform_purge_check(bool purge_cold_files, int tl)
    TRACE_INT(tl, "\tspace_based_purge = " << ps.m_space_based_purge);
    TRACE_INT(tl, "\tage_based_purge   = " << ps.m_age_based_purge);
 
-   if ( ! ps.m_space_based_purge && ! ps.m_age_based_purge) {
+   bool periodic = Cache::GetInstance().GetPurgePin() ? 
+                   Cache::GetInstance().GetPurgePin()->CallPeriodically() : false;
+
+   if ( ! ps.m_space_based_purge && ! ps.m_age_based_purge && !periodic ) {
       TRACE(Info, trc_pfx << "purge not required.");
       Cache::GetInstance().ClearPurgeProtectedSet();
       return;
@@ -709,7 +713,7 @@ void ResourceMonitor::perform_purge_check(bool purge_cold_files, int tl)
       return;
    }
 
-   TRACE(Info, trc_pfx << "purge required ... scheduling purge task.");
+   TRACE(Info, trc_pfx << "scheduling purge task.");
 
    // At this point we have all the information: report, decide on action.
    // There is still some missing infrastructure, especially as regards to purge-plugin:

@@ -34,6 +34,15 @@ protected:
 public:
    virtual ~PurgePin() {}
 
+
+   //---------------------------------------------------------------------
+   //! 
+   //!
+   //! @return total number of bytes
+   //---------------------------------------------------------------------
+   virtual bool CallPeriodically() { return true; };
+
+
    //---------------------------------------------------------------------
    //! Provide erase information from directory statistics
    //!
