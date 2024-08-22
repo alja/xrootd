@@ -11,7 +11,7 @@
 
 #include <algorithm>
 
-#define RM_DEBUG
+// #define RM_DEBUG
 #ifdef RM_DEBUG
 #define dprintf(...) printf(__VA_ARGS__)
 #else
@@ -351,7 +351,6 @@ void ResourceMonitor::heart_beat()
    static const char *tpfx = "heart_beat() ";
 
    const Configuration &conf    =  Cache::Conf();
-   const DirState      &root_ds = *m_fs_state.get_root();
 
    const int s_queue_proc_interval   = 10;
    // const s_stats_up_prop_interval = 60; -- for when we have dedicated purge / stat report structs
@@ -422,10 +421,11 @@ void ResourceMonitor::heart_beat()
          if (conf.is_dir_stat_reporting_on())
          {
             const int store_depth  =  conf.m_dirStatsStoreDepth;
-            const int n_sshot_dirs =  root_ds.count_dirs_to_level(store_depth);
-            dprintf("Snapshot n_dirs=%d, total n_dirs=%d\n", n_sshot_dirs,
+            #ifdef RM_DEBUG
+            const DirState      &root_ds = *m_fs_state.get_root();
+            dprintf("Snapshot n_dirs=%d, total n_dirs=%d\n", root_ds.count_dirs_to_level(store_depth),
                   root_ds.m_here_usage.m_NDirectories + root_ds.m_recursive_subdir_usage.m_NDirectories + 1);
-
+            #endif
             m_fs_state.dump_recursively(store_depth);
 
             /*
@@ -726,10 +726,11 @@ void ResourceMonitor::perform_purge_check(bool purge_cold_files, int tl)
    //     deletion -- eg, by comparing stat time of cinfo + doing the is-active / is-purge-protected.
 
    const DirState &root_ds = *m_fs_state.get_root();
-   const int n_pshot_dirs = root_ds.count_dirs_to_level(9999);
    const int n_calc_dirs  = 1 + root_ds.m_here_usage.m_NDirectories + root_ds.m_recursive_subdir_usage.m_NDirectories;
+#ifdef RM_DEBUG
+   const int n_pshot_dirs = root_ds.count_dirs_to_level(9999);
    dprintf("purge dir count recursive=%d vs from_usage=%d\n", n_pshot_dirs, n_calc_dirs);
-
+#endif
    ps.m_dir_vec.reserve(n_calc_dirs);
    ps.m_dir_vec.emplace_back( DirPurgeElement(root_ds, -1) );
    fill_pshot_vec_children(root_ds, 0, ps.m_dir_vec, 9999);
