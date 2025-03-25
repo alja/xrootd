@@ -22,6 +22,8 @@
 #include <sys/statvfs.h>
 
 #include "XrdCl/XrdClURL.hh"
+#include "XrdCl/XrdClFileSystem.hh"
+#include "XrdCl/XrdClFileStateHandler.hh"
 
 #include "XrdOuc/XrdOucEnv.hh"
 #include "XrdOuc/XrdOucUtils.hh"
@@ -1091,6 +1093,37 @@ int Cache::Prepare(const char *curl, int oflags, mode_t mode)
    {
       XrdSysCondVarHelper lock(&m_active_cond);
       m_purge_delay_set.insert(f_name);
+   }
+
+   //
+   // Cache control headers
+   //
+
+
+/*
+   // stat example
+   XrdCl::FileSystem fs(url); // AMT .. the url is not passed to the plugin
+   XrdCl::Buffer queryArgs(100);
+   queryArgs.FromString(curl); // string value of xrdCl::QueryCode::XAttr
+   XrdCl::StatInfo *response = 0;
+   XrdCl::Status st = fs.Stat(url.GetPath(), response);
+   std::cout << st.GetShellCode() << " resp:" << response << "\n";
+*/
+
+   XrdCl::FileSystem fs(url);
+   XrdCl::Buffer queryArgs(500);
+   queryArgs.FromString(curl); // pass parh throug args
+   XrdCl::Buffer* response = nullptr;
+
+   XrdCl::XRootDStatus st = fs.Query(XrdCl::QueryCode::Space, queryArgs, response);
+
+   std::cout << st.GetShellCode() << " resp in buffer:" << response << "\n";
+   if (st.IsOK()) {
+      std::string etag = response->ToString();
+      std::cout << "XrdCl::FileSystem::Query success: ETag = " << "" << etag << "\n";
+   }
+   else {
+      std::cout << "XrdCl::FileSystem::Query failed " << st.GetShellCode() << "\n";
    }
 
    struct stat sbuff;
