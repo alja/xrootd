@@ -440,6 +440,22 @@ File* Cache::GetFile(const std::string& path, IO* io, long long off, long long f
       } else {
          filesize = st.st_size;
       }
+
+      XrdCl::QueryCode::Code queryCode = XrdCl::QueryCode::XAttr; // tmp ... should be XrdCl::QueryCode::ETag ????
+      XrdCl::Buffer queryArgs(5);
+      std::string qs =  std::to_string(queryCode);
+      queryArgs.FromString(qs);
+
+      XrdCl::Buffer* responseFctl = nullptr;
+      int resFctl = io->Base()->Fcntl(queryArgs, responseFctl);
+      if (resFctl == 0)
+      {
+         // seems like success
+         std::cout << "Cache::GetFile ...  IO Query result buffer " << responseFctl->ToString() << "\n";
+      }
+      else {
+         std::cout << "Cache::GetFile IO query to origin failed \n";
+      }
    }
 
    File *file = 0;
