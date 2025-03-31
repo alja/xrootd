@@ -1131,7 +1131,7 @@ int Cache::Prepare(const char *curl, int oflags, mode_t mode)
    queryArgs.FromString(curl); // pass parh throug args
    XrdCl::Buffer* response = nullptr;
 
-   XrdCl::XRootDStatus st = fs.Query(XrdCl::QueryCode::Space, queryArgs, response);
+   XrdCl::XRootDStatus st = fs.Query(XrdCl::QueryCode::XAttr, queryArgs, response);
 
    std::cout << st.GetShellCode() << " resp in buffer:" << response << "\n";
    if (st.IsOK()) {
