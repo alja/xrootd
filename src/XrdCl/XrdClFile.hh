@@ -599,7 +599,7 @@ namespace XrdCl
                           Buffer          *&response,
                           uint16_t          timeout = 0 )
                           XRD_WARN_UNUSED_RESULT;
-
+files
       //------------------------------------------------------------------------
       //! Get access token to a file - async
       //!

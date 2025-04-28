@@ -451,10 +451,10 @@ File* Cache::GetFile(const std::string& path, IO* io, long long off, long long f
       if (resFctl == 0)
       {
          // seems like success
-         std::cout << "Cache::GetFile ...  IO Query result buffer " << responseFctl->ToString() << "\n";
+         std::cout << "Cache::GetFile ...  Fctl result buffer " << responseFctl->ToString() << "\n";
       }
       else {
-         std::cout << "Cache::GetFile IO query to origin failed \n";
+         std::cout << "Cache::GetFile Fctl to origin failed \n";
       }
    }
 
