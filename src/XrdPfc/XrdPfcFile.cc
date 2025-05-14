@@ -27,6 +27,7 @@
 #include "XrdSys/XrdSysTimer.hh"
 #include "XrdOss/XrdOss.hh"
 #include "XrdOuc/XrdOucEnv.hh"
+#include "XrdOuc/XrdOucJson.hh"
 #include "XrdSfs/XrdSfsInterface.hh"
 
 #include <cstdio>
@@ -50,7 +51,7 @@ const char *File::m_traceID = "File";
 
 //------------------------------------------------------------------------------
 
-File::File(const std::string& path, long long iOffset, long long iFileSize) :
+File::File(const std::string& path, long long iOffset, long long iFileSize, const std::string& json) :
    m_ref_cnt(0),
    m_data_file(0),
    m_info_file(0),
@@ -58,6 +59,7 @@ File::File(const std::string& path, long long iOffset, long long iFileSize) :
    m_filename(path),
    m_offset(iOffset),
    m_file_size(iFileSize),
+   m_cache_control(json),
    m_current_io(m_io_set.end()),
    m_ios_in_detach(0),
    m_non_flushed_cnt(0),
@@ -135,9 +137,9 @@ void File::Close()
 
 //------------------------------------------------------------------------------
 
-File* File::FileOpen(const std::string &path, long long offset, long long fileSize)
+File* File::FileOpen(const std::string &path, long long offset, long long fileSize, const std::string& json)
 {
-   File *file = new File(path, offset, fileSize);
+   File *file = new File(path, offset, fileSize, json);
    if ( ! file->Open())
    {
       delete file;
@@ -496,7 +498,7 @@ bool File::Open()
              ", data_size_from_last_block=" << m_cfi.GetExpectedDataFileSize() << ")");
 
       // Check if data file exists and is of reasonable size.
-      if (data_existed && data_stat.st_size >= m_cfi.GetExpectedDataFileSize())
+      if (data_existed && data_stat.st_size >= m_cfi.GetExpectedDataFileSize() && TestCCXAttr())
       {
          initialize_info_file = false;
       } else {
@@ -531,6 +533,8 @@ bool File::Open()
       m_cfi.Write(m_info_file, ifn.c_str());
       m_info_file->Fsync();
       cache()->WriteFileSizeXAttr(m_info_file->getFD(), m_file_size);
+      cache()->WriteCacheControlXAttr(m_info_file->getFD(), m_cache_control);
+      //
       TRACEF(Debug, tpfx << "Creating new file info, data size = " <<  m_file_size << " num blocks = "  << m_cfi.GetNBlocks());
    }
    else
@@ -1669,6 +1673,31 @@ std::string File::GetRemoteLocations() const
       s = "[]";
    }
    return s;
+}
+
+bool File::TestCCXAttr()
+{
+   std::string cc;
+   cache()->GetCacheControlXAttr(m_info_file->getFD(),cc);
+
+   nlohmann::json j1 = nlohmann::json::parse(cc);
+   nlohmann::json j2 = nlohmann::json::parse(m_cache_control);
+   if (j2.contains("ETag") ) {
+      if (j1.contains("ETag")) {
+         if (j1["ETag"] == j2["ETag"]) {
+            return true;
+         }
+         else {
+            TRACEF(Info, "XrdPfc::File::TestCCXAttr ETag mismatch");
+            return false;
+         }
+      }
+      else {
+         TRACEF(Info, "XrdPfc::File::TestCCXAttr. ETag entry missing");
+         return false;
+      }
+   }
+   return true;
 }
 
 //==============================================================================

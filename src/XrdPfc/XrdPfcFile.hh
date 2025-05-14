@@ -208,7 +208,7 @@ public:
    // Constructor, destructor, Open() and Close() are private.
 
    //! Static constructor that also does Open. Returns null ptr if Open fails.
-   static File* FileOpen(const std::string &path, long long offset, long long fileSize);
+   static File* FileOpen(const std::string &path, long long offset, long long fileSize, const std::string& json);
 
    //! Handle removal of a block from Cache's write queue.
    void BlockRemovedFromWriteQ(Block*);
@@ -292,7 +292,7 @@ public:
 
 private:
    //! Constructor.
-   File(const std::string &path, long long offset, long long fileSize);
+   File(const std::string &path, long long offset, long long fileSize, const std::string& xattrJson);
 
    //! Destructor.
    ~File();
@@ -314,6 +314,9 @@ private:
    const std::string    m_filename;     //!< filename of data file on disk
    const long long      m_offset;       //!< offset of cached file for block-based / hdfs operation
    const long long      m_file_size;    //!< size of cached disk file for block-based operation
+
+   // HTTP header cache control
+   const std::string m_cache_control;  //!< cache control values retrived with Fsctl from origin's IO
 
    // IO objects attached to this file.
 
@@ -415,6 +418,9 @@ private:
    bool select_current_io_or_disable_prefetching(bool skip_current);
 
    int  offsetIdx(int idx) const;
+
+   // Http cache directive
+   bool TestCCXAttr();
 };
 
 //------------------------------------------------------------------------------
