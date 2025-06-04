@@ -1008,7 +1008,7 @@ int Cache::GetCacheControlXAttr(const std::string &cinfo_fname, std::string& iva
       int res = XrdSysXAttrActive->Get("pfc.cache-control", &cc, 512, pfn, -1);
       if (res > 0)
       {
-         std::string tmp(cc);
+         std::string tmp(cc, res);
          ival = tmp;
          //ival.assign(tmp);
          return res;
@@ -1028,7 +1028,7 @@ int Cache::GetCacheControlXAttr(int fd, std::string& ival)
       int res = XrdSysXAttrActive->Get("pfc.cache-control", &cc, 512, nullptr, fd);
       if (res > 0)
       {
-         ival = cc;
+         ival = std::string(cc, res);
          return res;
       }
    }
@@ -1180,7 +1180,29 @@ int Cache::Prepare(const char *curl, int oflags, mode_t mode)
          using namespace nlohmann;
          json j = json::parse(icc);
          if (j.contains("ETag") && j.contains("revalidate") && j["revalidate"] == true) {
-            return 0;
+            // comapre cinfo xattr etag and the etag from http header response
+            XrdCl::FileSystem fs(url);
+            XrdCl::Buffer queryArgs(500);
+            queryArgs.FromString(curl); // pass parh throug args
+            XrdCl::Buffer *response = nullptr;
+
+            XrdCl::XRootDStatus st = fs.Query(XrdCl::QueryCode::XAttr, queryArgs, response);
+
+            std::cout << "json " < <j.dump() ;
+            std::cout << st.GetShellCode() << " query resp in buffer:" << st.GetShellCode() << "\n";
+            if (st.IsOK())
+            {
+               std::string etag = response->ToString();
+               std::cout << "XrdCl::FileSystem::Query success: ETag = " << "" << etag << "\n";
+               if (etag == j["ETag"]) {
+                  return 1;
+               }
+            }
+            else
+            {
+               TRACE(Error, "Prepare() XrdCl::FileSystem::Query failed " << f_name.c_str());
+               return 0;
+            }
          }
          if (j.contains("expire")) {
             time_t current_time;
