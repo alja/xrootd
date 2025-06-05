@@ -444,22 +444,28 @@ File* Cache::GetFile(const std::string& path, IO* io, long long off, long long f
       }
    }
 
+   // AMT:The File::Fcntl is competing/duplicating with FileSystem::Query
+   // in the case of defer open matching etags and not exceeding expiration date.
+   // Is there a way one know here this is the case of defer open?
+   //
+   // Also, the io->Baseis of XrdPosixPrepIO type
+   // this functions requires initializaton in the case of defer open
+   // The call needs to be optional (set from configuration)
+   //
    std::string ccjson;
-   XrdCl::QueryCode::Code queryCode = XrdCl::QueryCode::XAttr; // AMT tmp
+   XrdCl::QueryCode::Code queryCode = XrdCl::QueryCode::XAttr;
    XrdCl::Buffer queryArgs(5);
    std::string qs =  std::to_string(queryCode);
    queryArgs.FromString(qs);
-
    XrdCl::Buffer* responseFctl = nullptr;
    int resFctl = io->Base()->Fcntl(queryArgs, responseFctl);
    if (resFctl == 0)
    {
-      // seems like success
-      std::cout << "Cache::GetFile ...  Fctl result buffer " << responseFctl->ToString() << "\n";
+      TRACE(Debug, "GetFile() XrdCl::File::Fcntl value " << responseFctl->ToString());
       ccjson =  responseFctl->ToString();
    }
    else {
-      std::cout << "Cache::GetFile Fctl to origin failed \n";
+      TRACE(Error, "GetFile() XrdCl::File::Fcntl query failed " << io->Base()->Path());
    }
 
    File *file = 0;
@@ -1188,15 +1194,12 @@ int Cache::Prepare(const char *curl, int oflags, mode_t mode)
 
             XrdCl::XRootDStatus st = fs.Query(XrdCl::QueryCode::XAttr, queryArgs, response);
 
-            std::cout << "json " < <j.dump() ;
-            std::cout << st.GetShellCode() << " query resp in buffer:" << st.GetShellCode() << "\n";
             if (st.IsOK())
             {
                std::string etag = response->ToString();
-               std::cout << "XrdCl::FileSystem::Query success: ETag = " << "" << etag << "\n";
-               if (etag == j["ETag"]) {
-                  return 1;
-               }
+               bool etagValid = (etag == j["ETag"]);
+               TRACE(Info, "Prepare " << f_name << ", ETag valid res: " << etagValid);
+               return etagValid;
             }
             else
             {
