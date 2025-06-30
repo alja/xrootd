@@ -22,10 +22,13 @@
 #include <sys/statvfs.h>
 
 #include "XrdCl/XrdClURL.hh"
+#include "XrdCl/XrdClFileSystem.hh"
+#include "XrdCl/XrdClFileStateHandler.hh"
 
 #include "XrdOuc/XrdOucEnv.hh"
 #include "XrdOuc/XrdOucUtils.hh"
 #include "XrdOuc/XrdOucPrivateUtils.hh"
+#include "XrdOuc/XrdOucJson.hh"
 
 #include "XrdSys/XrdSysTimer.hh"
 #include "XrdSys/XrdSysTrace.hh"
@@ -425,6 +428,7 @@ File* Cache::GetFile(const std::string& path, IO* io, long long off, long long f
    }
 
    // This is always true, now that IOFileBlock is unsupported.
+
    if (filesize == 0)
    {
       struct stat st;
@@ -440,11 +444,35 @@ File* Cache::GetFile(const std::string& path, IO* io, long long off, long long f
       }
    }
 
+   // AMT:The File::Fcntl is competing/duplicating with FileSystem::Query
+   // in the case of defer open matching etags and not exceeding expiration date.
+   // Is there a way one know here this is the case of defer open?
+   //
+   // Also, the io->Baseis of XrdPosixPrepIO type
+   // this functions requires initializaton in the case of defer open
+   // The call needs to be optional (set from configuration)
+   //
+   std::string ccjson;
+   XrdCl::QueryCode::Code queryCode = XrdCl::QueryCode::XAttr;
+   XrdCl::Buffer queryArgs(5);
+   std::string qs =  std::to_string(queryCode);
+   queryArgs.FromString(qs);
+   XrdCl::Buffer* responseFctl = nullptr;
+   int resFctl = io->Base()->Fcntl(queryArgs, responseFctl);
+   if (resFctl == 0)
+   {
+      TRACE(Debug, "GetFile() XrdCl::File::Fcntl value " << responseFctl->ToString());
+      ccjson =  responseFctl->ToString();
+   }
+   else {
+      TRACE(Error, "GetFile() XrdCl::File::Fcntl query failed " << io->Base()->Path());
+   }
+
    File *file = 0;
 
    if (filesize >= 0)
    {
-      file = File::FileOpen(path, off, filesize);
+      file = File::FileOpen(path, off, filesize, ccjson);
    }
 
    {
@@ -905,6 +933,19 @@ int Cache::LocalFilePath(const char *curl, char *buff, int blen,
 }
 
 //______________________________________________________________________________
+// If supported, write Cache-Control as xattr to cinfo file.
+//------------------------------------------------------------------------------
+void Cache::WriteCacheControlXAttr(int cinfo_fd, const std::string& cc)
+{
+   if (m_metaXattr) {
+      int res = XrdSysXAttrActive->Set("pfc.cache-control", cc.c_str(), cc.size(), 0, cinfo_fd, 0);
+      if (res != 0) {
+         TRACE(Debug, "WriteFileSizeXAttr error setting xattr " << res);
+      }
+   }
+}
+
+//______________________________________________________________________________
 // If supported, write file_size as xattr to cinfo file.
 //------------------------------------------------------------------------------
 void Cache::WriteFileSizeXAttr(int cinfo_fd, long long file_size)
@@ -956,6 +997,48 @@ long long Cache::DetermineFullFileSize(const std::string &cinfo_fname)
    }
    delete infoFile;
    return ret;
+}
+
+//______________________________________________________________________________
+// Get cache control attributes from the corresponding cinfo-file name.
+// Returns -error on failure.
+//------------------------------------------------------------------------------
+int Cache::GetCacheControlXAttr(const std::string &cinfo_fname, std::string& ival)
+{
+   if (m_metaXattr) {
+
+      char pfn[4096];
+      m_oss->Lfn2Pfn(cinfo_fname.c_str(), pfn, 4096);
+
+      char cc[512];
+      int res = XrdSysXAttrActive->Get("pfc.cache-control", &cc, 512, pfn, -1);
+      if (res > 0)
+      {
+         std::string tmp(cc, res);
+         ival = tmp;
+         //ival.assign(tmp);
+         return res;
+      }
+   }
+   return 0;
+}
+
+//______________________________________________________________________________
+// Get cache control attributes from the corresponding cinfo-file name.
+// Returns -error on failure.
+//------------------------------------------------------------------------------
+int Cache::GetCacheControlXAttr(int fd, std::string& ival)
+{
+   if (m_metaXattr) {
+      char cc[512];
+      int res = XrdSysXAttrActive->Get("pfc.cache-control", &cc, 512, nullptr, fd);
+      if (res > 0)
+      {
+         ival = std::string(cc, res);
+         return res;
+      }
+   }
+   return 0;
 }
 
 //______________________________________________________________________________
@@ -1097,6 +1180,41 @@ int Cache::Prepare(const char *curl, int oflags, mode_t mode)
    if (m_oss->Stat(i_name.c_str(), &sbuff) == XrdOssOK)
    {
       TRACE(Dump, "Prepare defer open " << f_name);
+
+      std::string icc;
+      if (GetCacheControlXAttr(i_name, icc) > 0) {
+         using namespace nlohmann;
+         json j = json::parse(icc);
+         if (j.contains("ETag") && j.contains("revalidate") && j["revalidate"] == true) {
+            // comapre cinfo xattr etag and the etag from http header response
+            XrdCl::FileSystem fs(url);
+            XrdCl::Buffer queryArgs(500);
+            queryArgs.FromString(curl); // pass parh throug args
+            XrdCl::Buffer *response = nullptr;
+
+            XrdCl::XRootDStatus st = fs.Query(XrdCl::QueryCode::XAttr, queryArgs, response);
+
+            if (st.IsOK())
+            {
+               std::string etag = response->ToString();
+               bool etagValid = (etag == j["ETag"]);
+               TRACE(Info, "Prepare " << f_name << ", ETag valid res: " << etagValid);
+               return etagValid;
+            }
+            else
+            {
+               TRACE(Error, "Prepare() XrdCl::FileSystem::Query failed " << f_name.c_str());
+               return 0;
+            }
+         }
+         if (j.contains("expire")) {
+            time_t current_time;
+            current_time = time(NULL);
+            if (current_time > j["expire"]) {
+               return 0;
+            }
+         }
+      }
       return 1;
    }
    else
