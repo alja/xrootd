@@ -186,7 +186,7 @@ public:
    virtual int ConsiderCached(const char *url);
 
    bool DecideIfConsideredCached(long long file_size, long long bytes_on_disk);
-   void WriteCacheControlXAttr(int cinfo_fd, const std::string& cc);
+   void WriteCacheControlXAttr(int cinfo_fd, const char* path, const std::string& cc);
    void WriteFileSizeXAttr(int cinfo_fd, long long file_size);
    long long DetermineFullFileSize(const std::string &cinfo_fname);
    int GetCacheControlXAttr(const std::string &cinfo_fname, std::string& res);
