@@ -548,7 +548,8 @@ bool File::Open(XrdOucCacheIO* inputIO)
          ccjson = responseFctl->ToString();
          nlohmann::json j =  nlohmann::json::parse(ccjson);
          std::cout << j.dump(2) << " ====\n";
-         if (j.contains("max-age")) {
+         if (j.contains("max-age"))
+         {
             time_t ma = j["max-age"];
             ma += time(NULL);
             j["expire"] = ma;

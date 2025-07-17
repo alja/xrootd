@@ -448,7 +448,7 @@ File* Cache::GetFile(const std::string& path, IO* io, long long off, long long f
 
    if (filesize >= 0)
    {
-      file = File::FileOpen(path, off, filesize, io->Base());
+      file = File::FileOpen(path, off, filesize, io->GetInput());
    }
 
    {
@@ -917,7 +917,7 @@ void Cache::WriteCacheControlXAttr(int cinfo_fd, const char* path, const std::st
    if (m_metaXattr) {
       int res = XrdSysXAttrActive->Set("pfc.cache-control", cc.c_str(), cc.size(), path, cinfo_fd, 0);
       if (res != 0) {
-         TRACE(Debug, "WriteFileSizeXAttr error setting xattr " << res);
+         TRACE(Error, "WritecacheControlXAttr error setting xattr " << res);
       }
    }
 }
@@ -993,9 +993,8 @@ int Cache::GetCacheControlXAttr(const std::string &cinfo_fname, std::string& iva
       {
          std::string tmp(cc, res);
          ival = tmp;
-         //ival.assign(tmp);
-         return res;
       }
+      return res;
    }
    return 0;
 }

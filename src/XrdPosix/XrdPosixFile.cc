@@ -389,12 +389,8 @@ int XrdPosixFile::Fstat(struct stat &buf)
 
 int XrdPosixFile::Fcntl(const XrdCl::Buffer &arg, XrdCl::Buffer *&response)
 {
-   // AMT, how do I check if it is open ?
-   XrdCl::XRootDStatus st = clFile.Fcntl(arg, response);
-
-  // AMT simplify for now. The XRootDStatus shell code is 0 or other positive value
-  //     Do we need to check here for socket errors?
-  return st.GetShellCode();
+   XrdCl::XRootDStatus status = clFile.Fcntl(arg, response);
+   return status.IsOK() ? 0 : -1;
 }
   
 /******************************************************************************/
