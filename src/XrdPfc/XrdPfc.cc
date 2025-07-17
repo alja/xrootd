@@ -1201,7 +1201,9 @@ int Cache::Prepare(const char *curl, int oflags, mode_t mode)
             }
             else
             {
+               // Message has a status beacuse we are in the block condition for cache-contol xattr
                TRACE(Error, "Prepare() XrdCl::FileSystem::Query failed " << f_name.c_str());
+               ccIsValid = false;
             }
          }
 
