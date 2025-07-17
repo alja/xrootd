@@ -536,7 +536,7 @@ bool File::Open(XrdOucCacheIO* inputIO)
       cache()->WriteFileSizeXAttr(m_info_file->getFD(), m_file_size);
 
       // access and write cache-control attributes
-      std::string ccjson;
+      std::string cc_str;
       XrdCl::QueryCode::Code queryCode = XrdCl::QueryCode::XAttr;
       XrdCl::Buffer queryArgs(5);
       std::string qs = std::to_string(queryCode);
@@ -545,18 +545,17 @@ bool File::Open(XrdOucCacheIO* inputIO)
       int resFctl = inputIO->Fcntl(queryArgs, responseFctl);
       if (resFctl == 0)
       {
-         ccjson = responseFctl->ToString();
-         nlohmann::json j =  nlohmann::json::parse(ccjson);
-         std::cout << j.dump(2) << " ====\n";
-         if (j.contains("max-age"))
+         cc_str = responseFctl->ToString();
+         nlohmann::json cc_json =  nlohmann::json::parse(cc_str);
+         if (cc_json.contains("max-age"))
          {
-            time_t ma = j["max-age"];
+            time_t ma = cc_json["max-age"];
             ma += time(NULL);
-            j["expire"] = ma;
-            ccjson = j.dump();
+            cc_json["expire"] = ma;
+            cc_str = cc_json.dump();
          }
-         TRACE(Debug, "GetFile() XrdCl::File::Fcntl value " << ccjson);
-         cache()->WriteCacheControlXAttr(m_info_file->getFD(), nullptr, ccjson);
+         TRACE(Debug, "GetFile() XrdCl::File::Fcntl value " << cc_str);
+         cache()->WriteCacheControlXAttr(m_info_file->getFD(), nullptr, cc_str);
       }
       else
       {

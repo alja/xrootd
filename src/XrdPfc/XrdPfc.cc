@@ -1160,44 +1160,43 @@ int Cache::Prepare(const char *curl, int oflags, mode_t mode)
       std::string icc;
       if (GetCacheControlXAttr(i_name, icc) > 0) {
          using namespace nlohmann;
-         json j = json::parse(icc);
+         json cc_json = json::parse(icc);
 
-         bool mustRevalidate = j.contains("revalidate") && (j["revalidate"] == true);
+         bool mustRevalidate = cc_json.contains("revalidate") && (cc_json["revalidate"] == true);
          bool hasExpired = false;
-         if (j.contains("expire")) {
+         if (cc_json.contains("expire"))
+         {
             time_t current_time;
             current_time = time(NULL);
-            if (current_time > j["expire"]) {
+            if (current_time > cc_json["expire"])
                hasExpired = true;
-            }
          }
-
 
          bool ccIsValid = true;
 
-         if (j.contains("ETag") && (mustRevalidate || hasExpired)) {
-            // comapre cinfo xattr etag and the etag from http header response
+         if (cc_json.contains("ETag") && (mustRevalidate || hasExpired)) {
+            // Compare cinfo xattr etag and the etag from file system query response
+            // Note: qeury returns only etag value, not a json string
             XrdCl::FileSystem fs(url);
             XrdCl::Buffer queryArgs(500);
-            queryArgs.FromString(curl); // pass parh throug args
+            queryArgs.FromString(curl); // pass file path throug args
             XrdCl::Buffer *response = nullptr;
-
             XrdCl::XRootDStatus st = fs.Query(XrdCl::QueryCode::XAttr, queryArgs, response);
 
             if (st.IsOK())
             {
                std::string etag = response->ToString();
-               ccIsValid = (etag == j["ETag"]);
+               ccIsValid = (etag == cc_json["ETag"]);
                TRACE(Info, "Prepare " << f_name << ", ETag valid res: " << ccIsValid);
 
-               // update expire time when Etag is valid
-               if (j.contains("max-age")) {
-                  time_t ma = j["max-age"];
-                  j["expire"] = ma + time(NULL);
-
+               // update expiration time if Etag is valid
+               if (cc_json.contains("max-age"))
+               {
+                  time_t ma = cc_json["max-age"];
+                  cc_json["expire"] = ma + time(NULL);
                   char pfn[4096];
                   m_oss->Lfn2Pfn(i_name.c_str(), pfn, 4096);
-                  WriteCacheControlXAttr(-1, pfn, j.dump());
+                  WriteCacheControlXAttr(-1, pfn, cc_json.dump());
                }
             }
             else
