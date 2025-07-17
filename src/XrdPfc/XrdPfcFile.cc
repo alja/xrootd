@@ -537,7 +537,7 @@ bool File::Open(XrdOucCacheIO* inputIO)
 
       // access and write cache-control attributes
       std::string cc_str;
-      XrdCl::QueryCode::Code queryCode = XrdCl::QueryCode::XAttr;
+      XrdCl::QueryCode::Code queryCode = XrdCl::QueryCode::Head;
       XrdCl::Buffer queryArgs(5);
       std::string qs = std::to_string(queryCode);
       queryArgs.FromString(qs);

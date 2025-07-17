@@ -1181,7 +1181,7 @@ int Cache::Prepare(const char *curl, int oflags, mode_t mode)
             XrdCl::Buffer queryArgs(500);
             queryArgs.FromString(curl); // pass file path throug args
             XrdCl::Buffer *response = nullptr;
-            XrdCl::XRootDStatus st = fs.Query(XrdCl::QueryCode::XAttr, queryArgs, response);
+            XrdCl::XRootDStatus st = fs.Query(XrdCl::QueryCode::Head, queryArgs, response);
 
             if (st.IsOK())
             {
