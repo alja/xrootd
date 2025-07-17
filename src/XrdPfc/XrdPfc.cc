@@ -444,35 +444,11 @@ File* Cache::GetFile(const std::string& path, IO* io, long long off, long long f
       }
    }
 
-   // AMT:The File::Fcntl is competing/duplicating with FileSystem::Query
-   // in the case of defer open matching etags and not exceeding expiration date.
-   // Is there a way one know here this is the case of defer open?
-   //
-   // Also, the io->Baseis of XrdPosixPrepIO type
-   // this functions requires initializaton in the case of defer open
-   // The call needs to be optional (set from configuration)
-   //
-   std::string ccjson;
-   XrdCl::QueryCode::Code queryCode = XrdCl::QueryCode::XAttr;
-   XrdCl::Buffer queryArgs(5);
-   std::string qs =  std::to_string(queryCode);
-   queryArgs.FromString(qs);
-   XrdCl::Buffer* responseFctl = nullptr;
-   int resFctl = io->Base()->Fcntl(queryArgs, responseFctl);
-   if (resFctl == 0)
-   {
-      TRACE(Debug, "GetFile() XrdCl::File::Fcntl value " << responseFctl->ToString());
-      ccjson =  responseFctl->ToString();
-   }
-   else {
-      TRACE(Error, "GetFile() XrdCl::File::Fcntl query failed " << io->Base()->Path());
-   }
-
    File *file = 0;
 
    if (filesize >= 0)
    {
-      file = File::FileOpen(path, off, filesize, ccjson);
+      file = File::FileOpen(path, off, filesize, io->Base());
    }
 
    {
@@ -934,11 +910,12 @@ int Cache::LocalFilePath(const char *curl, char *buff, int blen,
 
 //______________________________________________________________________________
 // If supported, write Cache-Control as xattr to cinfo file.
+// One can use file descriptor or full path interchangeably
 //------------------------------------------------------------------------------
-void Cache::WriteCacheControlXAttr(int cinfo_fd, const std::string& cc)
+void Cache::WriteCacheControlXAttr(int cinfo_fd, const char* path, const std::string& cc)
 {
    if (m_metaXattr) {
-      int res = XrdSysXAttrActive->Set("pfc.cache-control", cc.c_str(), cc.size(), 0, cinfo_fd, 0);
+      int res = XrdSysXAttrActive->Set("pfc.cache-control", cc.c_str(), cc.size(), path, cinfo_fd, 0);
       if (res != 0) {
          TRACE(Debug, "WriteFileSizeXAttr error setting xattr " << res);
       }
@@ -1185,7 +1162,21 @@ int Cache::Prepare(const char *curl, int oflags, mode_t mode)
       if (GetCacheControlXAttr(i_name, icc) > 0) {
          using namespace nlohmann;
          json j = json::parse(icc);
-         if (j.contains("ETag") && j.contains("revalidate") && j["revalidate"] == true) {
+
+         bool mustRevalidate = j.contains("revalidate") && (j["revalidate"] == true);
+         bool hasExpired = false;
+         if (j.contains("expire")) {
+            time_t current_time;
+            current_time = time(NULL);
+            if (current_time > j["expire"]) {
+               hasExpired = true;
+            }
+         }
+
+
+         bool ccIsValid = true;
+
+         if (j.contains("ETag") && (mustRevalidate || hasExpired)) {
             // comapre cinfo xattr etag and the etag from http header response
             XrdCl::FileSystem fs(url);
             XrdCl::Buffer queryArgs(500);
@@ -1197,22 +1188,31 @@ int Cache::Prepare(const char *curl, int oflags, mode_t mode)
             if (st.IsOK())
             {
                std::string etag = response->ToString();
-               bool etagValid = (etag == j["ETag"]);
-               TRACE(Info, "Prepare " << f_name << ", ETag valid res: " << etagValid);
-               return etagValid;
+               ccIsValid = (etag == j["ETag"]);
+               TRACE(Info, "Prepare " << f_name << ", ETag valid res: " << ccIsValid);
+
+               // update expire time when Etag is valid
+               if (j.contains("max-age")) {
+                  time_t ma = j["max-age"];
+                  j["expire"] = ma + time(NULL);
+
+                  char pfn[4096];
+                  m_oss->Lfn2Pfn(i_name.c_str(), pfn, 4096);
+                  WriteCacheControlXAttr(-1, pfn, j.dump());
+               }
             }
             else
             {
                TRACE(Error, "Prepare() XrdCl::FileSystem::Query failed " << f_name.c_str());
-               return 0;
             }
          }
-         if (j.contains("expire")) {
-            time_t current_time;
-            current_time = time(NULL);
-            if (current_time > j["expire"]) {
-               return 0;
-            }
+
+
+         if (!ccIsValid)
+         {
+            // invalidate cinfo on ETag mismatch
+            // AMT ...what to do with the second fail_if_open argument ?
+            UnlinkFile(f_name, false);
          }
       }
       return 1;
