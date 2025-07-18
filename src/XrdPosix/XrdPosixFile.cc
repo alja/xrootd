@@ -389,8 +389,9 @@ int XrdPosixFile::Fstat(struct stat &buf)
 
 int XrdPosixFile::Fcntl(const XrdCl::Buffer &arg, XrdCl::Buffer *&response)
 {
+   // AMT: temporary solution to handle unsuported operations in XrdPfc::File::Open()
    XrdCl::XRootDStatus status = clFile.Fcntl(arg, response);
-   return status.IsOK() ? 0 : -1;
+   return status.IsOK() ? 0 : status.errNo;
 }
   
 /******************************************************************************/

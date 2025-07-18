@@ -536,7 +536,6 @@ bool File::Open(XrdOucCacheIO* inputIO)
       cache()->WriteFileSizeXAttr(m_info_file->getFD(), m_file_size);
 
       // access and write cache-control attributes
-      std::string cc_str;
       XrdCl::QueryCode::Code queryCode = XrdCl::QueryCode::Head;
       XrdCl::Buffer queryArgs(5);
       std::string qs = std::to_string(queryCode);
@@ -545,7 +544,7 @@ bool File::Open(XrdOucCacheIO* inputIO)
       int resFctl = inputIO->Fcntl(queryArgs, responseFctl);
       if (resFctl == 0)
       {
-         cc_str = responseFctl->ToString();
+         std::string cc_str = responseFctl->ToString();
          nlohmann::json cc_json =  nlohmann::json::parse(cc_str);
          if (cc_json.contains("max-age"))
          {
@@ -554,15 +553,15 @@ bool File::Open(XrdOucCacheIO* inputIO)
             cc_json["expire"] = ma;
             cc_str = cc_json.dump();
          }
-         TRACE(Debug, "GetFile() XrdCl::File::Fcntl value " << cc_str);
+         TRACE(Error, "GetFile() XrdCl::File::Fcntl value " << cc_str);
          cache()->WriteCacheControlXAttr(m_info_file->getFD(), nullptr, cc_str);
       }
-      else
+      else if (resFctl != kXR_Unsupported)
       {
-         TRACE(Error, "GetFile() XrdCl::File::Fcntl query failed " << inputIO->Path());
+         // Query XrdCl::QueryCode::Head is optional, print error only if informatin is supported
+         TRACE(Error, "GetFile() XrdCl::File::Fcntl query XrdCl::QueryCode::Head failed " << inputIO->Path());
       }
 
-      //
       TRACEF(Debug, tpfx << "Creating new file info, data size = " <<  m_file_size << " num blocks = "  << m_cfi.GetNBlocks());
    }
    else
