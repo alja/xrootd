@@ -1178,8 +1178,8 @@ int Cache::Prepare(const char *curl, int oflags, mode_t mode)
             // Compare cinfo xattr etag and the etag from file system query response
             // Note: qeury returns only etag value, not a json string
             XrdCl::FileSystem fs(url);
-            XrdCl::Buffer queryArgs(500);
-            queryArgs.FromString(curl); // pass file path throug args
+            XrdCl::Buffer queryArgs(1024); // pass file path throug args: reserve bytes to store path
+            queryArgs.FromString(curl);
             XrdCl::Buffer *response = nullptr;
             XrdCl::XRootDStatus st = fs.Query(XrdCl::QueryCode::Head, queryArgs, response);
 
@@ -1211,7 +1211,6 @@ int Cache::Prepare(const char *curl, int oflags, mode_t mode)
          if (!ccIsValid)
          {
             // invalidate cinfo on ETag mismatch
-            // AMT ...what to do with the second fail_if_open argument ?
             UnlinkFile(f_name, false);
          }
       }
