@@ -1207,13 +1207,13 @@ int Cache::Prepare(const char *curl, int oflags, mode_t mode)
             }
          }
 
-
          if (!ccIsValid)
          {
             // invalidate cinfo on ETag mismatch
             UnlinkFile(f_name, false);
          }
-      }
+      } // end chekcing cache control xattr in cinfo file
+
       return 1;
    }
    else
