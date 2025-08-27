@@ -35,6 +35,7 @@
 #include <sys/types.h>
 #include <vector>
 #include "XrdSys/XrdSysHeaders.hh"
+#include "XrdOuc/XrdOucCache.hh"
 #include "XrdOuc/XrdOucECMsg.hh"
 #include "XrdOuc/XrdOucExport.hh"
 #include "XrdOuc/XrdOucName2Name.hh"
@@ -190,6 +191,8 @@ static int   P2DST(int &retc, char *hBuff, int hBlen, PolAct pType,
 static int   P2OUT(char *pbuff, int pblen, XrdPssUrlInfo &uInfo);
 static int   P2URL(char *pbuff, int pblen, XrdPssUrlInfo &uInfo,
                    bool doN2N=true);
+static int   Xctl(int fd, XrdOucCacheOp::Code psxOp, int alen,
+                  const char *args, char **resp);            
 
 static const char  *ConfigFN;       // -> Pointer to the config file name
 static const char  *myHost;
