@@ -614,7 +614,7 @@ namespace XrdCl
     if( pPlugIn )
       return pPlugIn->Fcntl( arg, handler, timeout );
 
-    return FileStateHandler::Fcntl( pImpl->pStateHandler, arg, handler, timeout );
+    return FileStateHandler::Fcntl( pImpl->pStateHandler, QueryCode::Code::OpaqueQ, arg, handler, timeout );
   }
 
   //----------------------------------------------------------------------------
