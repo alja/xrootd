@@ -31,6 +31,7 @@
 /******************************************************************************/
 
 #include <cerrno>
+#include <iostream>
 
 #include "XrdCl/XrdClFileSystem.hh"
 
@@ -121,6 +122,12 @@ int XrdPosixExtra::FSctl(XrdOucCacheOp::Code opc,
 //
    if (!admin.Stat()) return -1;
 
+const char* args_cstr = args.c_str();
+size_t url_len = strlen(args_cstr);
+std::string url = args.substr(0, url_len);
+std::string command = args.substr(url_len+1);
+
+ printf("URl %s subcommand : %s \n", url.c_str(), command.c_str());
 // Return the actual retult
 
    return admin.Query(clOp, resp);
