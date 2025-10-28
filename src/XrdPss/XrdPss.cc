@@ -1227,53 +1227,6 @@ ssize_t XrdPssFile::Write(const void *buff, off_t offset, size_t blen)
 }
 
 /******************************************************************************/
-/*                                  F c t l                                   */
-/******************************************************************************/
-
-int XrdPssFile::Fctl(int cmd, int alen, const char *args, char **resp)
-{
-   XrdOucCacheOp::Code opc;
-
-// Made sure the file is open
-//
-    if (fd < 0) return -XRDOSS_E8004;
-
-// Get correct argument to use
-//
-   switch(cmd)
-         {case XrdOssDF::Fctl_QFinfo: opc = XrdOucCacheOp::Code::QFinfo;
-               break;
-          default:
-               *resp = 0;
-               return -ENOTSUP;
-               break;
-         }
-
-// Convert argument to a string and prepare for  the reponse
-//
-   std::string theArgs(args, alen);
-   std::string theResp;
-
-// Invoke the file control
-//
-
-   if (XrdPosixExtra::Fctl(fd, opc, theArgs, theResp) < 0)
-      {int rc = -errno;
-       lastEtrc = XrdPosixXrootd::QueryError(lastEtext, fd);
-       return rc;
-      }
-
-// Convert the response
-//
-   if (resp)
-      {int n = theResp.size() + 1;
-       *resp = new char[n];
-       strcpy(*resp, theResp.c_str());
-      }
-    return XrdOssOK;
-}
-
-/******************************************************************************/
 /*                                 f s t a t                                  */
 /******************************************************************************/
 

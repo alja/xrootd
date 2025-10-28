@@ -168,6 +168,7 @@ virtual
 int       Create(const char *, const char *, mode_t, XrdOucEnv &, int opts=0) override;
 void      EnvInfo(XrdOucEnv *envP) override;
 uint64_t  Features() override {return myFeatures;}
+int       FSctl(int cmd, int alen, const char *args, char **resp=0) override;
 int       Init(XrdSysLogger *, const char *) override {return -ENOTSUP;}
 int       Init(XrdSysLogger *, const char *, XrdOucEnv *envP) override;
 int       Lfn2Pfn(const char *Path, char *buff, int blen) override;
