@@ -1074,7 +1074,7 @@ int XrdOfsFile::fctl(const int cmd, int alen, const char *args,
        int rc = oh->Select().Fctl(XrdOssDF::Fctl_QFinfo, alen, args, &resp); 
        if (rc < 0)
           {if (resp) delete[] resp;
-           return XrdOfsFS->Emsg(epname,error,rc,"fctl",oh,false,false);
+            return XrdOfsFS->Emsg(epname,error,rc,"fctl",oh);
           }
        if (resp)
           {if ((rc = strlen(resp)))
