@@ -464,7 +464,22 @@ void ResourceMonitor::heart_beat()
          // This should really be export to a file (preferably binary, but then bin->json command is needed, too).
          // ss.dump();
 
-         const char* dumpfile = "/pfc-stats/DirStat.json";
+         std::string dumpfile = "/pfc-stats/DirStat.json-";
+         time_t    time;
+         struct tm t;
+         localtime_r(&time, &t);
+
+         char buf[256];
+         snprintf(buf, sizeof(buf), "%d-%02d-%02d %02d:%02d:%02d",
+                  1900 + t.tm_year,
+                  1 + t.tm_mon,
+                  t.tm_mday,
+                  t.tm_hour,
+                  t.tm_min,
+                  t.tm_sec);
+
+         dumpfile += buf;
+
          ss.write_json_file(dumpfile, m_oss, false);
          m_fs_state.reset_sshot_stats(queue_swap_time);
       }
